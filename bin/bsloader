@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+
+require 'bundler/setup'
+Bundler.require
+
+loader = Zeitwerk::Loader.new
+loader.push_dir 'lib'
+core_ext = "#{__dir__}/lib/core_ext/"
+loader.ignore core_ext
+
+loader.setup
+
+# Require core_ext files
+Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
+
+begin
+  opts = Slop.parse help: true do |o|
+    o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
+    o.string '-f', '--file', 'Mandatory: Path to HEX file to load', required: true
+    o.bool '-c', '--check', 'Verify flash content after upload', default: true
+    o.bool '-v', '--verbose', 'Verbose output', default: false
+    o.bool '-h', '--help', 'Print this help' do
+      puts "#{o}\n"
+      exit
+    end
+  end
+rescue Slop::MissingArgument => e
+  puts "Error: #{e}. Maybe you specified an empty argument?"
+  exit
+rescue Slop::UnknownOption => e
+  puts "WARNING: #{e}... continuing"
+end
+
+p opts.to_h
+
+loader = Bsl::Loader.new opts.to_h
