@@ -15,35 +15,63 @@ module Bsl
     CMD_TX_BSL_VERSION        = 25
     CMD_TX_BUFFER_SIZE        = 26
 
-    BSL_OK                    = 0
-    BSL_FLASH_WRITE_NOK       = 1
-    BSL_FLASH_FAIL_BIT        = 2
-    BSL_VOLTAGE_CHANGED       = 3
-    BSL_LOCKED                = 4
-    BSL_PASSWORD_ERROR        = 5
-    BSL_BYTE_WRITE_FORBIDDEN  = 6
-    BSL_UNKNOWN_COMMAND       = 7
-    BSL_PACKET_TOO_LARGE      = 8
-    BSL_DATA_BLOCK            = 58
-    BSL_MESSAGE               = 59
+    BSL_OK                    = 0x00
+    BSL_FLASH_WRITE_NOK       = 0x01
+    BSL_FLASH_FAIL_BIT        = 0x02
+    BSL_VOLTAGE_CHANGED       = 0x03
+    BSL_LOCKED                = 0x04
+    BSL_PASSWORD_ERROR        = 0x05
+    BSL_BYTE_WRITE_FORBIDDEN  = 0x06
+    BSL_UNKNOWN_COMMAND       = 0x07
+    BSL_PACKET_TOO_LARGE      = 0x08
+    BSL_DATA_BLOCK            = 0x3A
+    BSL_MESSAGE               = 0x3B
 
-    UART_ACK                  = 0
-    UART_HEADER_NOK           = 81
-    UART_CRC_NOK              = 82
-    UART_PACKET_SIZE_ZERO     = 83
-    UART_PACKET_SIZE_EXCEEDS  = 84
-    UART_UNKNOWN_ERROR        = 85
-    UART_UNKNOWN_BAUDRATE     = 86
-    MEM_START_MAIN_FLASH      = 32768
+    UART_ACK                  = 0x00
+    UART_HEADER_NOK           = 0x51
+    UART_CRC_NOK              = 0x52
+    UART_PACKET_SIZE_ZERO     = 0x53
+    UART_PACKET_SIZE_EXCEEDS  = 0x54
+    UART_UNKNOWN_ERROR        = 0x55
+    UART_UNKNOWN_BAUDRATE     = 0x56
+    MEM_START_MAIN_FLASH      = 0x8000
 
-    attr_reader :uart
+    MAX_REPLY_TIME            = 1.0  # Seconds
 
-    def initialize(device_path, verbose)
-      @uart = Uart.new device_path, verbose
+    attr_reader :uart, :device_path, :logger
+
+    def initialize(device_path, opts = {})
+      @device_path = device_path
+      @logger = opts.fetch :logger, Logger.new(STDOUT)
+
+      @uart = Uart.new device_path, verbose: opts[:verbose], logger: @logger
     end
 
-    def mass_erase
+    def check_bsl_reply
+      reply.length > 1 && reply[0] == 59 && reply[1] == 0
+    end
 
+    def enter_bsl
+      logger.info "Connecting to target board on #{device_path}"
+      uart.set_low_speed
+      uart.invoke_bsl
+    end
+
+    def mass_erase_flash
+      logger.info 'Mass erasing target EEPROM'
+
+
+      logger.info 'OK, EEPROM erased'
+    end
+
+    def read_reply
+      start_time = Time.now
+
+      loop do
+
+
+        break if Time.now - start_time >= MAX_REPLY_TIME
+      end
     end
 
     private

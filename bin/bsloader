@@ -17,6 +17,7 @@ begin
   opts = Slop.parse help: true do |o|
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string '-f', '--file', 'Mandatory: Path to HEX file to load', required: true
+    o.string '-l', '--logfile', 'Path to logfile'
     o.bool '-c', '--check', 'Verify flash content after upload', default: true
     o.bool '-v', '--verbose', 'Verbose output', default: false
     o.bool '-h', '--help', 'Print this help' do
