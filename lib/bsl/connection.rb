@@ -1,19 +1,20 @@
 # frozen_string_literal: true
+require 'logger'
 
 module Bsl
   class Connection
 
-    CMD_RX_DATA_BLOCK         = 16
-    CMD_RX_DATA_BLOCK_FAST    = 27
-    CMD_RX_PASSWORD           = 17
-    CMD_ERASE_SEGMENT         = 18
-    CMD_LOCK_UNLOCK_INFO      = 19
-    CMD_MASS_ERASE            = 21
-    CMD_CRC_CHECK             = 22
-    CMD_LOAD_PC               = 23
-    CMD_TX_DATA_BLOCK         = 24
-    CMD_TX_BSL_VERSION        = 25
-    CMD_TX_BUFFER_SIZE        = 26
+    CMD_RX_DATA_BLOCK         = 0x10
+    CMD_RX_DATA_BLOCK_FAST    = 0x1B
+    CMD_RX_PASSWORD           = 0x11
+    CMD_ERASE_SEGMENT         = 0x12
+    CMD_LOCK_UNLOCK_INFO      = 0x13
+    CMD_MASS_ERASE            = 0x15
+    CMD_CRC_CHECK             = 0x16
+    CMD_LOAD_PC               = 0x17
+    CMD_TX_DATA_BLOCK         = 0x18
+    CMD_TX_BSL_VERSION        = 0x19
+    CMD_TX_BUFFER_SIZE        = 0x1A
 
     BSL_OK                    = 0x00
     BSL_FLASH_WRITE_NOK       = 0x01
@@ -34,9 +35,8 @@ module Bsl
     UART_PACKET_SIZE_EXCEEDS  = 0x54
     UART_UNKNOWN_ERROR        = 0x55
     UART_UNKNOWN_BAUDRATE     = 0x56
-    MEM_START_MAIN_FLASH      = 0x8000
 
-    MAX_REPLY_TIME            = 1.0  # Seconds
+    MEM_START_MAIN_FLASH      = 0x8000
 
     attr_reader :uart, :device_path, :logger
 
@@ -48,33 +48,25 @@ module Bsl
     end
 
     def check_bsl_reply
-      reply.length > 1 && reply[0] == 59 && reply[1] == 0
+      reply.length > 1 && reply[0] == BSL_MESSAGE && reply[1] == BSL_OK
     end
 
     def enter_bsl
       logger.info "Connecting to target board on #{device_path}"
       uart.set_low_speed
+      # uart.trigger_reset
       uart.invoke_bsl
     end
 
     def mass_erase_flash
       logger.info 'Mass erasing target EEPROM'
-
-
+      send_command [CMD_MASS_ERASE]
       logger.info 'OK, EEPROM erased'
     end
 
     def read_reply
-      start_time = Time.now
 
-      loop do
-
-
-        break if Time.now - start_time >= MAX_REPLY_TIME
-      end
     end
-
-    private
 
     def send_command(command)
       raise ArgumentError, 'command must be an Array' unless command.is_a?(Array)
@@ -88,7 +80,12 @@ module Bsl
       # Append CRC16
       command.append (crc & 0xFF), ((crc >> 8) & 0xFF)
 
-      uart.write command
+      logger.debug "OUT -> (#{command.length} bytes) #{command.to_hex}"
+
+      # uart.write command.pack('c*')
+      uart.write command.to_chr_string
+      # command.each { |b| uart.write b }
+      uart.flush
     end
 
     def crc16(data)

@@ -1,21 +1,30 @@
-require 'digest/crc16_ccitt'
+require 'bundler/setup'
+Bundler.require
 
-module Digest
-  class CRC3000 < CRC16CCITT
+loader = Zeitwerk::Loader.new
+loader.push_dir 'lib'
+core_ext = "#{__dir__}/lib/core_ext/"
+loader.ignore core_ext
+loader.setup
+# Require core_ext files
+Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
 
-    INIT_CRC = 0xffffffff
+@board = Bsl::Connection.new '/dev/tty.usbserial-DA013RBN'
 
-    XOR_MASK = 0xffffffff
-
-    def update(data)
-      data.each do |b|
-        @crc = (((@crc >> 8) & 0x00ffffff) ^ @table[(@crc ^ b) & 0xff])
-      end
-
-      return self
-    end
+read = Thread.new do
+  while true
+    b = @board.uart.getbyte
+    p [b, b.to_hex_str]
   end
 end
 
+@board.enter_bsl
 
-p Digest::CRC3000.new.update [0x15]
+
+# @board.uart.flush_input
+
+sleep 0.1
+#
+@board.mass_erase_flash
+#
+read.join
