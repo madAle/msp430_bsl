@@ -32,6 +32,4 @@ rescue Slop::UnknownOption => e
   puts "WARNING: #{e}... continuing"
 end
 
-p opts.to_h
-
 loader = Bsl::Loader.new opts.to_h

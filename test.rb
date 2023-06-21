@@ -18,13 +18,15 @@ read = Thread.new do
   end
 end
 
+
 @board.enter_bsl
 
+@board.send_command [Bsl::Connection::CMD_TX_BUFFER_SIZE]
 
 # @board.uart.flush_input
 
-sleep 0.1
-#
-@board.mass_erase_flash
+# sleep 0.1
+# #
+# @board.mass_erase_flash
 #
 read.join

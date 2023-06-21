@@ -54,7 +54,6 @@ module Bsl
     def enter_bsl
       logger.info "Connecting to target board on #{device_path}"
       uart.set_low_speed
-      # uart.trigger_reset
       uart.invoke_bsl
     end
 
@@ -64,8 +63,8 @@ module Bsl
       logger.info 'OK, EEPROM erased'
     end
 
-    def read_reply
-
+    def read_response
+      uart.read
     end
 
     def send_command(command)
@@ -81,11 +80,9 @@ module Bsl
       command.append (crc & 0xFF), ((crc >> 8) & 0xFF)
 
       logger.debug "OUT -> (#{command.length} bytes) #{command.to_hex}"
-
-      # uart.write command.pack('c*')
       uart.write command.to_chr_string
-      # command.each { |b| uart.write b }
       uart.flush
+      # read_response
     end
 
     def crc16(data)

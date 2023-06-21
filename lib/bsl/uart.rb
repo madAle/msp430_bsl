@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 require 'logger'
+require 'timeout'
 
 module Bsl
   class Uart
@@ -9,7 +10,7 @@ module Bsl
       high_speed: { baud: 57600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s)
     }.freeze
 
-    MAX_READ_TIME            = 1.0  # Seconds
+    MAX_READ_TIME = 1.0  # Seconds
 
     attr_reader :serial_port, :device_path, :logger
 
@@ -23,22 +24,22 @@ module Bsl
     def invoke_bsl
       logger.info 'Entering BSL...'
       # slau319 pag. 5 - Fig. 1-2
-      # We do the TEST high and low cycles 2 times
-      reset_pin_go :low
-      test_pin_go :low
-      sleep_ms 250
-      test_pin_go(:low); sleep_ms 10
-      reset_pin_go(:low); sleep_ms 10
+      test_pin_go(:low)
+      reset_pin_go(:low)
+      sleep_ms 5
+      2.times do
+        test_pin_go(:high)
+        sleep_ms 1
+        test_pin_go(:low)
+        sleep_ms 1
+      end
 
-      test_pin_go(:high); sleep_ms 10
-      test_pin_go(:low); sleep_ms 10
-      test_pin_go(:high); sleep_ms 10
-      test_pin_go(:low); sleep_ms 10
-
-      test_pin_go(:high); sleep_ms 10
-      reset_pin_go(:high); sleep_ms 10
+      test_pin_go(:high)
+      sleep_ms 1
+      reset_pin_go(:high)
+      sleep_ms 1
       test_pin_go :low
-      sleep_ms 10
+      sleep_ms 50
 
       logger.info 'OK, BSL ready'
     end
@@ -47,21 +48,25 @@ module Bsl
       # slau319 pag. 5 - Fig. 1-1
       reset_pin_go :low
       test_pin_go :low
-      sleep_micros 100
+      sleep_ms 5
       reset_pin_go :high
-      sleep_micros 100
     end
 
     def read
       begin
-        Timeout(MAX_READ_TIME) do
-          while read = serial_port.getc
-            p read
+        res = []
+        Timeout::timeout(MAX_READ_TIME) do
+          loop do
+            read = serial_port.getbyte
+            break unless read
+            res << read
           end
         end
       rescue Timeout::Error
         raise Bsl::Exception, "No response received from BSL"
       end
+
+      res
     end
 
     def set_high_speed
