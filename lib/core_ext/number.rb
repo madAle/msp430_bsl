@@ -6,4 +6,8 @@ class Numeric
     end
     n
   end
+
+  def millis
+    self / 1_000.0
+  end
 end

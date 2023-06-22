@@ -6,11 +6,12 @@ module Bsl
   class Uart
 
     CONFIGS = {
-      low_speed: { 'baud': 9600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s),
+      low_speed: { baud: 9600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s),
       high_speed: { baud: 57600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s)
     }.freeze
 
-    MAX_READ_TIME = 1.0  # Seconds
+    WAIT_FOR_ACK_MAX      = 50.millis
+    WAIT_FOR_RESPONSE_MAX = 50.millis
 
     attr_reader :serial_port, :device_path, :logger
 
@@ -19,27 +20,32 @@ module Bsl
       @logger = opts.fetch :logger, ::Logger.new(STDOUT)
 
       @serial_port = SerialPort.new @device_path
+
     end
 
+    # Texas Instrument's slau319 pag. 5 - Fig. 1-2
     def invoke_bsl
+      serial_port.flush_input
+      serial_port.flush_output
+
       logger.info 'Entering BSL...'
-      # slau319 pag. 5 - Fig. 1-2
+
       test_pin_go(:low)
       reset_pin_go(:low)
-      sleep_ms 5
+      sleep 5.millis
       2.times do
         test_pin_go(:high)
-        sleep_ms 1
+        sleep 1.millis
         test_pin_go(:low)
-        sleep_ms 1
+        sleep 1.millis
       end
 
       test_pin_go(:high)
-      sleep_ms 1
+      sleep 1.millis
       reset_pin_go(:high)
-      sleep_ms 1
+      sleep 1.millis
       test_pin_go :low
-      sleep_ms 50
+      sleep 50.millis # Give microcontroller time to enter BSL
 
       logger.info 'OK, BSL ready'
     end
@@ -52,18 +58,33 @@ module Bsl
       reset_pin_go :high
     end
 
-    def read
+    def read_response
+      res = []
+      # Wait for first response byte - UART's ACK/NACK
+      uart_response = nil
       begin
-        res = []
-        Timeout::timeout(MAX_READ_TIME) do
-          loop do
-            read = serial_port.getbyte
-            break unless read
-            res << read
-          end
+        Timeout::timeout(WAIT_FOR_ACK_MAX) do
+          uart_response = UartResponse.new serial_port.readbyte 1
         end
       rescue Timeout::Error
-        raise Bsl::Exception, "No response received from BSL"
+        logger.error 'Timeout occurred while waiting for UART ACK'
+        return nil
+      end
+
+      # If we arrived here, uart_response has been populated
+      unless uart_response.ok?
+        logger.error uart_response.reason
+        return nil
+      end
+
+      # Wait for command response
+      begin
+        Timeout::timeout(WAIT_FOR_RESPONSE_MAX) do
+          cmd_response = UartResponse.new serial_port.readbyte 1
+        end
+      rescue Timeout::Error
+        logger.error 'Timeout occurred while waiting for UART ACK'
+        return nil
       end
 
       res
@@ -116,18 +137,6 @@ module Bsl
 
     def reset_pin_go(value)
       serial_port.dtr = convert_pin value, negate: true
-    end
-
-    def sleep_ms(value)
-      sleep value / 1_000.0
-    end
-
-    def sleep_micros(value)
-      sleep value / 1_000_000.0
-    end
-
-    def sleep_nanos(value)
-      sleep value / 1_000_000_000.0
     end
 
     def test_pin_go(value)
