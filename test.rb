@@ -9,7 +9,7 @@ loader.setup
 # Require core_ext files
 Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
 
-@board = Bsl::Connection.new '/dev/tty.usbserial-DA013RBN'
+@board = Bsl::Uart::Connection.new '/dev/tty.usbserial-DA013RBN'
 
 read = Thread.new do
   while true

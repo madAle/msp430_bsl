@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Bsl
   class Command
 
@@ -18,18 +20,18 @@ module Bsl
 
     attr_accessor :name, :code, :addr, :data, :value
 
-    def self.valid?(cmd_name)
+    def self.supports?(cmd_name)
       MESSAGES.keys.include? cmd_name.to_sym
     end
 
     def self.[](cmd_name)
-      raise ArgumentError, "command #{cmd_name} is not a valid BSL CMD code" unless valid?(cmd_name)
+      raise Exceptions::Command::NameNotSupported, cmd_name unless supports?(cmd_name)
 
       MESSAGES[cmd_name.to_sym]
     end
 
     def initialize(cmd_name, addr: nil, data: nil)
-      raise ArgumentError, "command #{cmd_name} is not a valid BSL CMD code" unless self.class.valid?(cmd_name)
+      raise Exceptions::Command::NameNotSupported, cmd_name unless supports?(cmd_name)
 
       @name = cmd_name
       @value = self.class[@name]
@@ -40,46 +42,18 @@ module Bsl
       validate
     end
 
-    def [](key)
-      key = key.to_sym
-      raise ArgumentError, "attribute '#{key}' not valid" unless value.keys.include?(key)
-
-      value[key]
-    end
-
     def length
-      packet.length
-    end
-
-    def packet
-      return @packet if @packet
-
-      command = [value]
-      cmd_len = command.length
-      # Calculate CRC (it must be calculated only on command data)
-      crc = crc16 command
-      # Prepend preamble
-      command.prepend 0x80, (cmd_len & 0xFF), ((cmd_len >> 8) & 0xFF)
-      # Append CRC16
-      @packet = command.append (crc & 0xFF), ((crc >> 8) & 0xFF)
-    end
-
-    def to_hex_ary_str
-      packet.to_hex
-    end
-
-    def to_uart
-      packet.to_chr_string
+      code.to_bytes_ary.length
     end
 
     def validate
       # Check if command requires address and/or data
       if value[:requires_addr] && !value
-        raise Exceptions::CommandRequiresAddr.new name
+        raise Exceptions::Command::RequiresAddr.new name
       end
 
       if value[:requires_data] && !data
-        raise Exceptions::CommandRequiresData.new name
+        raise Exceptions::Command::RequiresData.new name
       end
     end
   end
