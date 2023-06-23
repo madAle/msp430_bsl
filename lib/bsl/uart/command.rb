@@ -1,6 +1,6 @@
 module Bsl
-  module ResponseOf
-    class Uart < Base
+  module Uart
+    class Ack
 
       MESSAGES = {
         0x00 => { code: :ack, reason: 'ACK - Command correctly received' },
@@ -12,11 +12,21 @@ module Bsl
         0x56 => { code: :unkown_baudrate, reason: 'Unknown baud rate. The supplied data for baud rate change is not a known value' }
       }
 
+      attr_accessor :value, :message
+
       def initialize(value)
         raise ArgumentError, 'message not supported' unless MESSAGES.include?(value)
 
         @value = value
         @message = MESSAGES[@value]
+      end
+
+      def ok?
+        value == 0x00
+      end
+
+      def reason
+        message[:reason]
       end
     end
   end
