@@ -2,8 +2,6 @@ module Bsl
   module ResponseKinds
     class Message
 
-      PAYLOAD_SIZE = 1.freeze
-
       class << self
         def supports?(message)
           message = message.to_sym
@@ -24,6 +22,7 @@ module Bsl
       end
 
       def is_ok_given_command?(command)
+        p command
         cmd_configs = Configs::RESPONSE_MESSAGES[command.name]
 
         if cmd_configs.has_key?(:data_size) && data.size != cmd_configs[:data_size]

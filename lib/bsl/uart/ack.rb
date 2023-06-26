@@ -17,7 +17,7 @@ module Bsl
       attr_accessor :value, :message
 
       def initialize(value)
-        raise ArgumentError, 'message not supported' unless MESSAGES.include?(value)
+        raise Exceptions::Ack::MessageNotSupported, value unless MESSAGES.include?(value)
 
         @value = value
         @message = MESSAGES[@value]

@@ -11,16 +11,17 @@ Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
 
 @board = Bsl::Uart::Connection.new '/dev/tty.usbserial-DA013RBN'
 
-read = Thread.new do
-  while true
-    b = @board.uart.getbyte
-    p [b, b.to_hex_str]
-  end
-end
+# read = Thread.new do
+#   while true
+#     b = @board.serial_port.getbyte
+#     p [b, b.to_hex_str]
+#   end
+# end
 
 
 @board.enter_bsl
 
 @board.send_command :mass_erase
+@board.send_command :rx_password, data: Bsl::Configs::CMD_RX_PASSWORD
 
-read.join
+# read.join

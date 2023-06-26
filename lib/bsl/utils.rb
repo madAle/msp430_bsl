@@ -24,16 +24,16 @@ module Bsl
                 STDOUT
               end
 
-      Logger.new logto, level: normalize_log_level(opt[:loglevel])
+      Logger.new logto, level: normalize_log_level(opts[:loglevel])
     end
 
     def normalize_log_level(level)
       case level
-      when :debug, ::Logger::DEBUG, 'debug' then ::Logger::DEBUG
-      when :info,  ::Logger::INFO,  'info'  then ::Logger::INFO
-      when :warn,  ::Logger::WARN,  'warn'  then ::Logger::WARN
-      when :error, ::Logger::ERROR, 'error' then ::Logger::ERROR
-      when :fatal, ::Logger::FATAL, 'fatal' then ::Logger::FATAL
+      when :debug, ::Logger::DEBUG, 'debug', 'd' then ::Logger::DEBUG
+      when :info,  ::Logger::INFO,  'info', 'i'  then ::Logger::INFO
+      when :warn,  ::Logger::WARN,  'warn', 'w'  then ::Logger::WARN
+      when :error, ::Logger::ERROR, 'error', 'e' then ::Logger::ERROR
+      when :fatal, ::Logger::FATAL, 'fatal', 'f' then ::Logger::FATAL
       else
         ENV['LOG_LEVEL'] || Logger::DEBUG
       end

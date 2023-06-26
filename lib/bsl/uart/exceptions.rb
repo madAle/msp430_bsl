@@ -3,6 +3,22 @@
 module Bsl
   module Uart
     module Exceptions
+      module Ack
+
+        class NOK <  StandardError
+          def initialize(val)
+            message = "Command ACK not OK. Received value: #{val}"
+            super(message)
+          end
+        end
+        class MessageNotSupported < StandardError
+          def initialize(value)
+            message = "message with value 0x#{value.to_hex_str} not supported"
+            super(message)
+          end
+        end
+      end
+
       module PeripheralInterface
         class InterfaceWrapNotACommand < StandardError
           def initialize(arg)

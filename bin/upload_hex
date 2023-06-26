@@ -2,6 +2,7 @@
 
 require 'bundler/setup'
 Bundler.require
+require 'slop'
 
 loader = Zeitwerk::Loader.new
 loader.push_dir 'lib'
@@ -17,8 +18,8 @@ begin
   opts = Slop.parse help: true do |o|
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
-    o.string '-l', '--logfile', 'Path to logfile'
-    o.string '-v', "'--loglevel', 'Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Defaults to 'debug'", default: 'debug'
+    o.string '-g', '--logfile', 'Path to logfile'
+    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Defaults to 'debug'", default: :debug
     o.bool '-c', '--check', 'Verify flash content after upload', default: true
     o.bool '-h', '--help', 'Print this help' do
       puts "#{o}\n"
@@ -29,13 +30,28 @@ rescue Slop::MissingArgument => e
   puts "Error: #{e}. Maybe you specified an empty argument?"
   exit
 rescue Slop::UnknownOption => e
-  puts "WARNING: #{e}... continuing"
+  puts "Error: #{e}"
+  exit
 end
 
 include Bsl::Utils
 
 logger = build_logger_from opts
 
-@board = Bsl::Uart::Connection.new opts[:hexfile], logger: logger
+@board = Bsl::Uart::Connection.new opts[:device], logger: logger
+
+# Enter BSL
 @board.enter_bsl
-@board.mass_erase_flash
+# Mass erase FLASH
+@board.send_command :mass_erase
+# Unlock BSL protected commands
+@board.send_command :rx_password, data: Bsl::Configs::CMD_RX_PASSWORD
+# Switch UART to high speed
+@board.send_command :change_baud_rate, data: Bsl::Configs::BAUD_RATES[115200]
+@board.set_high_speed
+
+# If everything has gone well so far...
+hexfile = File.read opts[:hexfile]
+hexfile.each_line do |line|
+  # p line
+end

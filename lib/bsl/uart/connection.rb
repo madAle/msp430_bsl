@@ -8,11 +8,11 @@ module Bsl
 
       CONFIGS = {
         low_speed: { baud: 9600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s),
-        high_speed: { baud: 57600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s)
+        high_speed: { baud: 115200, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s)
       }.freeze
 
-      WAIT_FOR_ACK_MAX      = 50.millis
-      WAIT_FOR_RESPONSE_MAX = 50.millis
+      WAIT_FOR_ACK_MAX      = 100.millis
+      WAIT_FOR_RESPONSE_MAX = 100.millis
 
       MEM_START_MAIN_FLASH      = 0x8000
 
@@ -33,61 +33,86 @@ module Bsl
 
       def enter_bsl
         logger.info "Connecting to target board through UART on #{device_path}"
-        uart.set_low_speed
-        uart.invoke_bsl
+        set_low_speed
+        invoke_bsl
       end
 
-      def read_response
-        res = []
+      def read_response_for(command)
+        raise ArgumentError, "an instance of Bsl::Command is expected as argument. Given: '#{command.class}'" unless command.is_a?(Command)
+
         # Wait for first response byte - UART's ACK/NACK
-        uart_response = nil
+        ack = nil
         begin
           Timeout::timeout(WAIT_FOR_ACK_MAX) do
-            ack = Ack.new serial_port.readbyte 1
+            ack = Ack.new serial_port.getbyte
           end
-        rescue Timeout::Error
+        rescue Timeout::Error => e
           logger.error 'Timeout occurred while waiting for UART ACK'
-          return nil
+          raise e
         end
 
-        # If we arrived here, uart_response has been populated
-        unless ack.ok?
+        # If we arrived here, ack has been populated
+        if ack && ack.ok?
+          logger.debug "IN  <- ACK (1 byte) 0x#{ack.value.to_hex_str}"
+        else
           logger.error ack.reason
-          return nil
+          raise Exceptions::Ack::NOK, ack.value
+        end
+
+        # If this command has not response, return
+        unless command.configs[:response][:kind]
+          return ack
         end
 
         # Wait for command response
         begin
+          pi = PeripheralInterface.new
           Timeout::timeout(WAIT_FOR_RESPONSE_MAX) do
-            pi = PeripheralInterface.parse
-            response = Response.from serial_port.readbyte 1
+            loop do
+              read = serial_port.readpartial MAX_BSL_RESPONSE_SIZE
+              pi.push read.unpack 'C*'
+              break if pi.valid?
+            end
           end
-        rescue Timeout::Error
-          logger.error 'Timeout occurred while waiting for UART ACK'
-          return nil
+        rescue Timeout::Error => e
+          logger.error 'Timeout occurred while fetching response from UART'
+          raise e
         end
 
-        res
+        # Unwrap PeripheralInterface and create Response
+        logger.debug "IN  <- RES (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
+        response = pi.to_response
+        unless response.is_ok_given_command? command
+          raise Bsl::Exceptions::Response::NotValid pi.errors
+        end
+
+        response
       end
 
       def send_command(cmd_name, addr: nil, data: nil)
-        command = Command.new cmd_namem addr: addr, data: data
+        command = Command.new cmd_name, addr: addr, data: data
+        pi = PeripheralInterface.wrap command
         logger.info "Sending command '#{command.name}' over UART"
         # Flush serial's output and input before sending a new command
-        uart.flush_output
-        uart.flush_input
+        serial_port.flush_output
+        serial_port.flush_input
 
-        logger.debug "OUT -> (#{command.length} bytes) #{command.to_hex_ary_str}"
-        uart.write command.to_uart
+        unless pi.valid?
+          logger.error "PeripheralInterface not valid. Errors: #{pi.errors}"
+          return nil
+        end
 
-        uart.read_response
+        logger.debug "OUT -> (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
+        serial_port.write pi.to_uart
+
+        read_response_for command
       end
 
       def set_high_speed
         logger.debug 'Serial port entering HIGH speed'
         serial_port.set_modem_params CONFIGS[:high_speed]
-        serial_port.rts = true
-        serial_port.dtr = false
+        test_pin_go :high
+        reset_pin_go :low
       end
 
       def set_low_speed

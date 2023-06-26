@@ -27,6 +27,10 @@ module Bsl
       validate
     end
 
+    def packet
+      [code, addr, data].flatten.compact
+    end
+
     def length
       code.to_bytes_ary.length
     end

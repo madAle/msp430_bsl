@@ -3,7 +3,6 @@
 module Bsl
   module Exceptions
     module Command
-
       class NameNotSupported < StandardError
         def initialize(given_name)
           message = "command '#{given_name}' not recognized. Supported commands: #{Configs::CMDS.keys}"
@@ -24,7 +23,6 @@ module Bsl
           super(msg)
         end
       end
-
     end
 
     module Response
@@ -35,13 +33,12 @@ module Bsl
         end
       end
 
-      # class MessageNotSupported < StandardError
-      #   def initialize(cmd, message)
-      #     message = "message name '#{message}' not recognized. Supported response MESSAGES: #{Bsl::Response::CMD[cmd].keys}"
-      #     super(message)
-      #   end
-      # end
-
+      class NotValid < StandardError
+        def initialize(errors)
+          message = "Response not valid. Errors: \n\n#{errors.map { |err| " - #{err[1]}" }.join "\n" }"
+          super(message)
+        end
+      end
 
       class WrongDataSize < StandardError
         def initialize(data, size, min: false)

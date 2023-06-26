@@ -21,7 +21,7 @@ module Bsl
             raise Exceptions::PeripheralInterfaceWrapNotACommand, command
           end
 
-          new header: OK_HEADER, data_len: command.length, data: [command.code]
+          new header: OK_HEADER, data_len: command.packet.size, data: command.packet
         end
 
         def parse(raw_data)
@@ -52,7 +52,7 @@ module Bsl
       end
 
       def crc_ok?
-        crc == crc16(data)
+        data && crc == crc16(data)
       end
 
       def header_ok?
@@ -60,7 +60,7 @@ module Bsl
       end
 
       def data_len_ok?
-        data.length == data_len
+        data&.length == data_len
       end
 
       def length
@@ -101,7 +101,6 @@ module Bsl
           @crc = values[0] | (values[1] << 8)
         end
       end
-
       alias_method :<<, :push
 
       def to_hex_ary_str
@@ -112,10 +111,14 @@ module Bsl
         packet.to_chr_string
       end
 
+      def to_response
+        Response.new data
+      end
+
       def valid?
         @errors = []
         @errors << [:header, 'Header NOK'] unless header_ok?
-        @errors << [:data_len, "data_len value (#{data_len}) differs from actual data length (#{data.length})"] unless data_len_ok?
+        @errors << [:data_len, "'data_len' value (#{data_len}) differs from current data length (#{data&.length})"] unless data_len_ok?
         @errors << [:crc, 'CRC NOK'] unless crc_ok?
 
         @errors.empty?
