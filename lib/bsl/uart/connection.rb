@@ -43,7 +43,7 @@ module Bsl
         uart_response = nil
         begin
           Timeout::timeout(WAIT_FOR_ACK_MAX) do
-            uart_response = ResponseOf::Uart.new serial_port.readbyte 1
+            ack = Ack.new serial_port.readbyte 1
           end
         rescue Timeout::Error
           logger.error 'Timeout occurred while waiting for UART ACK'
@@ -51,15 +51,16 @@ module Bsl
         end
 
         # If we arrived here, uart_response has been populated
-        unless uart_response.ok?
-          logger.error uart_response.reason
+        unless ack.ok?
+          logger.error ack.reason
           return nil
         end
 
         # Wait for command response
         begin
           Timeout::timeout(WAIT_FOR_RESPONSE_MAX) do
-            cmd_response = UartResponse.new serial_port.readbyte 1
+            pi = PeripheralInterface.parse
+            response = Response.from serial_port.readbyte 1
           end
         rescue Timeout::Error
           logger.error 'Timeout occurred while waiting for UART ACK'

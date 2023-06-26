@@ -16,10 +16,10 @@ Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
 begin
   opts = Slop.parse help: true do |o|
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
-    o.string '-f', '--file', 'Mandatory: Path to HEX file to load', required: true
+    o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
     o.string '-l', '--logfile', 'Path to logfile'
+    o.string '-v', "'--loglevel', 'Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Defaults to 'debug'", default: 'debug'
     o.bool '-c', '--check', 'Verify flash content after upload', default: true
-    o.bool '-v', '--verbose', 'Verbose output', default: false
     o.bool '-h', '--help', 'Print this help' do
       puts "#{o}\n"
       exit
@@ -32,4 +32,10 @@ rescue Slop::UnknownOption => e
   puts "WARNING: #{e}... continuing"
 end
 
-loader = Bsl::Loader.new opts.to_h
+include Bsl::Utils
+
+logger = build_logger_from opts
+
+@board = Bsl::Uart::Connection.new opts[:hexfile], logger: logger
+@board.enter_bsl
+@board.mass_erase_flash

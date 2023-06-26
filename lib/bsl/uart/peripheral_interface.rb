@@ -5,8 +5,13 @@ module Bsl
     class PeripheralInterface
       include Utils
 
-      MIN_PACKET_SIZE = 6     # bytes
-      OK_HEADER       = 0x80
+      MIN_PACKET_SIZE = 6.freeze     # bytes
+      OK_HEADER       = 0x80.freeze
+
+      HEADER_SIZE   = 1.freeze
+      DATA_LEN_SIZE = 2.freeze
+      CRC_SIZE      = 2.freeze
+
 
       class << self
         include Utils
@@ -16,7 +21,7 @@ module Bsl
             raise Exceptions::PeripheralInterfaceWrapNotACommand, command
           end
 
-          new OK_HEADER, command.length, [command.code]
+          new header: OK_HEADER, data_len: command.length, data: [command.code]
         end
 
         def parse(raw_data)
@@ -28,20 +33,22 @@ module Bsl
           data = raw_data[3, data_len]
           crc = raw_data[-1] << 8 | raw_data[-2]
 
-          new header, data_len, data, crc
+          new header: header, data_len: data_len, data: data, crc: crc
         end
       end
 
       attr_reader :header, :data_len, :data, :crc, :errors, :packet, :cmd_kind
 
-      def initialize(header, data_len, data, crc = nil)
-        raise Exceptions::PeripheralInterfaceDataNotArray unless data.is_a?(Array)
+      def initialize(header: nil, data_len: nil, data: nil, crc: nil)
+        raise Exceptions::PeripheralInterfaceDataNotArray if (data && !data.is_a?(Array))
 
         @header = header
         @data_len = data_len
         @data = data
-        @crc = crc || crc16(data)
+        @crc = crc ? crc : (data ? crc16(data) : nil)
         @cmd_code
+
+        @partial_data = []
       end
 
       def crc_ok?
@@ -54,15 +61,6 @@ module Bsl
 
       def data_len_ok?
         data.length == data_len
-      end
-
-      def valid?
-        @errors = []
-        @errors << [:header, 'Header NOK'] unless header_ok?
-        @errors << [:data_len, "data_len value (#{data_len}) differs from actual data length (#{data.length})"] unless data_len_ok?
-        @errors << [:crc, 'CRC NOK'] unless crc_ok?
-
-        @errors.empty?
       end
 
       def length
@@ -80,16 +78,47 @@ module Bsl
         res.append (crc & 0xFF), ((crc >> 8) & 0xFF)
       end
 
+      def push(val)
+        @partial_data.append *val
+
+        # If :header has not already been fetched
+        if !header && @partial_data.size >= HEADER_SIZE
+          @header = @partial_data.shift
+        end
+        # If :data_len has not already been fetched, and we have enough data
+        if header && !data_len && @partial_data.size >= DATA_LEN_SIZE
+          values = @partial_data.shift DATA_LEN_SIZE
+          @data_len = values[0] | (values[1] << 8)
+        end
+
+        # If :data has not already been fetched, fetch it
+        if data_len && (data.nil? || data.empty?) && @partial_data.size >= data_len
+          @data = @partial_data.shift data_len
+        end
+
+        if data && !crc && @partial_data.size >= CRC_SIZE
+          values = @partial_data.shift CRC_SIZE
+          @crc = values[0] | (values[1] << 8)
+        end
+      end
+
+      alias_method :<<, :push
+
       def to_hex_ary_str
         packet.to_hex
       end
 
-      def to_response(expected_message_name)
-        Response.new data, expected_message_name
-      end
-
       def to_uart
         packet.to_chr_string
+      end
+
+      def valid?
+        @errors = []
+        @errors << [:header, 'Header NOK'] unless header_ok?
+        @errors << [:data_len, "data_len value (#{data_len}) differs from actual data length (#{data.length})"] unless data_len_ok?
+        @errors << [:crc, 'CRC NOK'] unless crc_ok?
+
+        @errors.empty?
       end
 
       private
