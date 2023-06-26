@@ -17,6 +17,10 @@ module Bsl
       crc & 0xFFFF
     end
 
+    def crc8(data)
+      (~data.reduce(:+) + 1) & 0xFF
+    end
+
     def build_logger_from(opts)
       logto = if opts[:logfile]
                 File.expand_path opts[:logfile]

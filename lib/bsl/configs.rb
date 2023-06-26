@@ -9,7 +9,7 @@ module Bsl
 
     CMDS = {
       rx_data_block:      { code: 0x10, requires_addr: true, requires_data: true,     response: { kind: CMD_KINDS[:message][:code], data_size: 1 }},
-      rx_data_block_fast: { code: 0x1B, requires_addr: true, requires_data: true,     response: { kind: CMD_KINDS[:message][:code], data_size: 1 }},
+      rx_data_block_fast: { code: 0x1B, requires_addr: true, requires_data: true,     response: { kind: nil, data_size: 1 }},
       rx_password:        { code: 0x11, requires_addr: false, requires_data: true,    response: { kind: CMD_KINDS[:message][:code], data_size: 1 }},
       erase_segment:      { code: 0x12, requires_addr: true, requires_data: false,    response: { kind: CMD_KINDS[:message][:code], data_size: 1 }},
       lock_unlock_info:   { code: 0x13, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:message][:code], data_size: 1 }},

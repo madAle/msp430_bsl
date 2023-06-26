@@ -27,6 +27,10 @@ module Bsl
         @serial_port = SerialPort.new @device_path
       end
 
+      def close_connection
+        serial_port.close
+      end
+
       def check_bsl_reply
         reply.length > 1 && reply[0] == BSL_MESSAGE && reply[1] == BSL_OK
       end
@@ -83,7 +87,7 @@ module Bsl
         logger.debug "IN  <- RES (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
         response = pi.to_response
         unless response.is_ok_given_command? command
-          raise Bsl::Exceptions::Response::NotValid pi.errors
+          raise Bsl::Exceptions::Response::NotValid, response.errors
         end
 
         response
@@ -124,7 +128,7 @@ module Bsl
         # slau319 pag. 5 - Fig. 1-1
         reset_pin_go :low
         test_pin_go :low
-        sleep_ms 5
+        sleep 5.millis
         reset_pin_go :high
       end
 

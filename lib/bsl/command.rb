@@ -28,11 +28,20 @@ module Bsl
     end
 
     def packet
-      [code, addr, data].flatten.compact
+      return @packet if @packet
+
+      @packet = [code, splitted_addr, data].flatten.compact
     end
 
     def length
       code.to_bytes_ary.length
+    end
+
+    # Split address to [low, middle, high] bytes
+    def splitted_addr
+      if addr
+        [ (addr & 0xFF), ((addr >> 8) & 0xFF), ((addr >> 16) & 0xFF) ]
+      end
     end
 
     private

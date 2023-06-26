@@ -50,8 +50,17 @@ logger = build_logger_from opts
 @board.send_command :change_baud_rate, data: Bsl::Configs::BAUD_RATES[115200]
 @board.set_high_speed
 
-# If everything has gone well so far...
-hexfile = File.read opts[:hexfile]
-hexfile.each_line do |line|
-  # p line
-end
+require 'benchmark'
+
+puts Benchmark.measure {
+  # If everything has gone well so far...
+  hexfile = Bsl::HexFile.new opts[:hexfile]
+  hexfile.lines.each do |line|
+    # We need to filter out eveything but data
+    if line.is_of_type?(:data)
+      @board.send_command :rx_data_block, addr: line.addr, data: line.data
+    end
+  end
+
+  @board.close_connection
+}

@@ -35,7 +35,7 @@ module Bsl
 
       class NotValid < StandardError
         def initialize(errors)
-          message = "Response not valid. Errors: \n\n#{errors.map { |err| " - #{err[1]}" }.join "\n" }"
+          message = "Response not valid. Errors: \n\n#{errors.map { |err| " - #{err[1]}" }.join "\n" }\n"
           super(message)
         end
       end

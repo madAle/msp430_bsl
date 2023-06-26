@@ -31,13 +31,11 @@ module Bsl
     end
 
     def is_message?
-      kind == Configs::CMD_KINDS[:message]
+      kind == Configs::CMD_KINDS[:message][:code]
     end
 
     def is_ok_given_command?(command)
       @errors = []
-
-      p command.configs
 
       # Verify if response kind is compatible with sent command
       unless kind == command.configs[:response][:kind]
@@ -53,8 +51,9 @@ module Bsl
       end
       # If kind is "message" check response code
       if is_message?
-        if Configs::RESPONSE_MESSAGES[:success] != data[0]  # First (and only) data byte is message code
-          @errors << [:message_code, "Message code NOK. Expected message code '#{command.configs[:code]}', got '#{code}'"]
+        success_code = Configs::RESPONSE_MESSAGES[:success][:code]
+        if data[0] != success_code  # First (and only) data byte is message code
+          @errors << [:message_code, "Message code NOK. Expected message code '#{success_code}', got '#{data[0]}'"]
         end
       end
 
