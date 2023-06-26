@@ -6,7 +6,7 @@ module Bsl
 
       class NameNotSupported < StandardError
         def initialize(given_name)
-          message = "command '#{given_name}' not recognized. Supported commands: #{Command::MESSAGES.keys}"
+          message = "command '#{given_name}' not recognized. Supported commands: #{Configs::CMDS.keys}"
           super(message)
         end
       end
@@ -28,23 +28,24 @@ module Bsl
     end
 
     module Response
-      class CMDNotSupported < StandardError
-        def initialize(cmd)
-          message = "CMD '#{cmd}' not recognized. Supported response CMDs: #{Bsl::Response::CMD.keys}"
+      class KindNotSupported < StandardError
+        def initialize(kind)
+          message = "Response kind '0x#{kind.to_hex_str}' not recognized. Supported response kinds: #{Configs::CMD_KINDS.keys}"
           super(message)
         end
       end
 
-      class MessageNotSupported < StandardError
-        def initialize(cmd, message)
-          message = "message name '#{message}' not recognized. Supported response MESSAGES: #{Bsl::Response::CMD[cmd].keys}"
-          super(message)
-        end
-      end
+      # class MessageNotSupported < StandardError
+      #   def initialize(cmd, message)
+      #     message = "message name '#{message}' not recognized. Supported response MESSAGES: #{Bsl::Response::CMD[cmd].keys}"
+      #     super(message)
+      #   end
+      # end
 
-      class NotEnoughData < StandardError
-        def initialize(data)
-          message = "payload with a size of '#{data.size}' doesn't satisfy the min required size of '#{Bsl::Response::PAYLOAD_MIN_SIZE}'"
+
+      class WrongDataSize < StandardError
+        def initialize(data, size, min: false)
+          message = "payload with a size of '#{data.size}' doesn't satisfy the required #{min ? 'min' : ''}size of '#{size}'"
           super(message)
         end
       end

@@ -32,7 +32,7 @@ module Bsl
         end
       end
 
-      attr_reader :header, :data_len, :data, :crc, :errors, :packet
+      attr_reader :header, :data_len, :data, :crc, :errors, :packet, :cmd_kind
 
       def initialize(header, data_len, data, crc = nil)
         raise Exceptions::PeripheralInterfaceDataNotArray unless data.is_a?(Array)
@@ -41,6 +41,7 @@ module Bsl
         @data_len = data_len
         @data = data
         @crc = crc || crc16(data)
+        @cmd_code
       end
 
       def crc_ok?
@@ -69,13 +70,14 @@ module Bsl
       end
 
       def packet
-        cmd_len = command.length
+        res = data.clone
+        cmd_len = res.length
         # Calculate CRC (it must be calculated only on command data)
-        crc = crc16 command
+        crc = crc16 res
         # Prepend preamble
-        command.prepend 0x80, (cmd_len & 0xFF), ((cmd_len >> 8) & 0xFF)
+        res.prepend 0x80, (cmd_len & 0xFF), ((cmd_len >> 8) & 0xFF)
         # Append CRC16
-        command.append (crc & 0xFF), ((crc >> 8) & 0xFF)
+        res.append (crc & 0xFF), ((crc >> 8) & 0xFF)
       end
 
       def to_hex_ary_str

@@ -2,22 +2,24 @@
 
 module Bsl
   module Configs
-    CMD_KIND_DATA = 0x3A.freeze
-    CMD_KIND_MESSAGE = 0x3B.freeze
+    CMD_KINDS = {
+      data: 0x3A,
+      message: 0x3B
+    }.freeze
 
     CMDS = {
-      rx_data_block:      { code: 0x10, requires_addr: true, requires_data: true,     response: { kind: CMD_KIND_MESSAGE }},
-      rx_data_block_fast: { code: 0x1B, requires_addr: true, requires_data: true,     response: { kind: CMD_KIND_MESSAGE }},
-      rx_password:        { code: 0x11, requires_addr: false, requires_data: true,    response: { kind: CMD_KIND_MESSAGE }},
-      erase_segment:      { code: 0x12, requires_addr: true, requires_data: false,    response: { kind: CMD_KIND_MESSAGE }},
-      lock_unlock_info:   { code: 0x13, requires_addr: false , requires_data: false,  response: { kind: CMD_KIND_MESSAGE }},
-      reserved:           { code: 0x14, requires_addr: false , requires_data: false,  response: { kind: CMD_KIND_MESSAGE }},
-      mass_erase:         { code: 0x15, requires_addr: false , requires_data: false,  response: { kind: CMD_KIND_MESSAGE }},
-      crc_check:          { code: 0x16, requires_addr: true , requires_data: true,    response: { kind: CMD_KIND_DATA, reason: 'CRC value received' }},
-      load_pc:            { code: 0x17, requires_addr: true, requires_data: false,    response: { kind: CMD_KIND_MESSAGE }},
-      tx_data_block:      { code: 0x18, requires_addr: true, requires_data: true,     response: { kind: CMD_KIND_DATA, reason: 'Data block received' }},
-      tx_bsl_version:     { code: 0x19, requires_addr: false , requires_data: false,  response: { kind: CMD_KIND_DATA, reason: 'Bsl Version received' }},
-      tx_buffer_size:     { code: 0x1A, requires_addr: false , requires_data: fals,   response: { kind: CMD_KIND_DAT, reason: 'Buffer size received' }}
+      rx_data_block:      { code: 0x10, requires_addr: true, requires_data: true,     response: { kind: CMD_KINDS[:message] }},
+      rx_data_block_fast: { code: 0x1B, requires_addr: true, requires_data: true,     response: { kind: CMD_KINDS[:message] }},
+      rx_password:        { code: 0x11, requires_addr: false, requires_data: true,    response: { kind: CMD_KINDS[:message] }},
+      erase_segment:      { code: 0x12, requires_addr: true, requires_data: false,    response: { kind: CMD_KINDS[:message] }},
+      lock_unlock_info:   { code: 0x13, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:message] }},
+      reserved:           { code: 0x14, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:message] }},
+      mass_erase:         { code: 0x15, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:message] }},
+      crc_check:          { code: 0x16, requires_addr: true , requires_data: true,    response: { kind: CMD_KINDS[:data], data_size: 2 }},
+      load_pc:            { code: 0x17, requires_addr: true, requires_data: false,    response: { kind: CMD_KINDS[:message] }},
+      tx_data_block:      { code: 0x18, requires_addr: true, requires_data: true,     response: { kind: CMD_KINDS[:data], data_size_min: 1 }},
+      tx_bsl_version:     { code: 0x19, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:data], data_size: 4 }},
+      tx_buffer_size:     { code: 0x1A, requires_addr: false , requires_data: false,  response: { kind: CMD_KINDS[:data], data_size: 2 }}
     }
 
     RESPONSE_MESSAGES = {
