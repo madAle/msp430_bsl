@@ -48,19 +48,41 @@ logger = build_logger_from opts
 @board.send_command :rx_password, data: Bsl::Configs::CMD_RX_PASSWORD
 # Switch UART to high speed
 @board.send_command :change_baud_rate, data: Bsl::Configs::BAUD_RATES[115200]
-@board.set_high_speed
+@board.set_uart_speed 115200
 
-require 'benchmark'
+# If everything has gone well so far...
+hexfile = Bsl::HexFile.new opts[:hexfile]
 
-puts Benchmark.measure {
-  # If everything has gone well so far...
-  hexfile = Bsl::HexFile.new opts[:hexfile]
-  hexfile.lines.each do |line|
-    # We need to filter out eveything but data
-    if line.is_of_type?(:data)
-      @board.send_command :rx_data_block, addr: line.addr, data: line.data
+# Group lines by contiguous memory addr
+line_groups = hexfile.data_lines_grouped_by_contiguous_addr
+# Try to optimize BSL writes
+# For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
+line_groups.each do |group|
+  curr_data_packet = []
+  curr_data_size = 0
+  # Cycle lines in a group
+  group.each do |line|
+    if curr_data_packet.empty?
+      # Use current line's addr as packet addr
+      curr_data_packet << line
+      curr_data_size += 2 + line.data_length  # 2 is the addr size (2 bytes)
+    elsif (curr_data_size + line.data_length) <= Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
+      # If there's still room, append the line data
+      curr_data_packet << line
+      curr_data_size += line.data_length
+    else
+      # No room left, send packet
+      @board.send_command :rx_data_block, addr: curr_data_packet.first.addr, data: curr_data_packet.map { |line| line.data }.reduce(:+)
+      curr_data_packet = []
+      curr_data_size = 0
+      redo  # Handle current line than would otherwise be skipped
     end
   end
 
-  @board.close_connection
-}
+  # Send residual lines before handling next group
+  if curr_data_packet.any?
+    @board.send_command :rx_data_block, addr: curr_data_packet.first.addr, data: curr_data_packet.map { |line| line.data }.reduce(:+)
+  end
+end
+
+@board.close_connection

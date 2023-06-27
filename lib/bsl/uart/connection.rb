@@ -6,23 +6,21 @@ module Bsl
   module Uart
     class Connection
 
-      CONFIGS = {
-        low_speed: { baud: 9600, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s),
-        high_speed: { baud: 115200, data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s)
-      }.freeze
+      UART_CONFIGS = { data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s).freeze
 
       WAIT_FOR_ACK_MAX      = 100.millis
       WAIT_FOR_RESPONSE_MAX = 100.millis
 
       MEM_START_MAIN_FLASH      = 0x8000
 
-      MAX_BSL_RESPONSE_SIZE     = 240
+      CORE_COMMANDS_BUFFER_SIZE     = 260
 
-      attr_reader :serial_port, :device_path, :logger
+      attr_reader :serial_port, :device_path, :logger, :cmd_buff_size
 
       def initialize(device_path, opts = {})
         @device_path = device_path
         @logger = opts.fetch :logger, Logger.new(STDOUT)
+        @cmd_buff_size = opts.fetch :cmd_buf_size, CORE_COMMANDS_BUFFER_SIZE
 
         @serial_port = SerialPort.new @device_path
       end
@@ -37,7 +35,7 @@ module Bsl
 
       def enter_bsl
         logger.info "Connecting to target board through UART on #{device_path}"
-        set_low_speed
+        set_uart_speed 9600
         invoke_bsl
       end
 
@@ -73,7 +71,7 @@ module Bsl
           pi = PeripheralInterface.new
           Timeout::timeout(WAIT_FOR_RESPONSE_MAX) do
             loop do
-              read = serial_port.readpartial MAX_BSL_RESPONSE_SIZE
+              read = serial_port.readpartial cmd_buff_size
               pi.push read.unpack 'C*'
               break if pi.valid?
             end
@@ -93,7 +91,7 @@ module Bsl
         response
       end
 
-      def send_command(cmd_name, addr: nil, data: nil)
+      def send_command(cmd_name, addr: nil, data: nil, log_only: false)
         command = Command.new cmd_name, addr: addr, data: data
         pi = PeripheralInterface.wrap command
         logger.info "Sending command '#{command.name}' over UART"
@@ -107,21 +105,20 @@ module Bsl
         end
 
         logger.debug "OUT -> (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
-        serial_port.write pi.to_uart
-
-        read_response_for command
+        unless log_only
+          serial_port.write pi.to_uart
+          read_response_for command
+        end
       end
 
-      def set_high_speed
-        logger.debug 'Serial port entering HIGH speed'
-        serial_port.set_modem_params CONFIGS[:high_speed]
+      def set_uart_speed(baud)
+        raise StandardError, "BAUD not supported. Supported BAUD: #{Configs::BAUD_RATES.keys}" unless Configs::BAUD_RATES.keys.include?(baud)
+
+        logger.debug "Setting serial port BAUD to #{baud} bps"
+
+        serial_port.set_modem_params UART_CONFIGS.merge('baud' => baud)  # We must use strings as keys
         test_pin_go :high
         reset_pin_go :low
-      end
-
-      def set_low_speed
-        logger.debug 'Serial port entering LOW speed'
-        serial_port.set_modem_params CONFIGS[:low_speed]
       end
 
       def trigger_reset

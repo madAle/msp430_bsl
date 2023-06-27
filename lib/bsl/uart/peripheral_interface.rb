@@ -12,7 +12,6 @@ module Bsl
       DATA_LEN_SIZE = 2.freeze
       CRC_SIZE      = 2.freeze
 
-
       class << self
         include Utils
 
