@@ -94,7 +94,7 @@ module Msp430Bsl
       def send_command(cmd_name, addr: nil, data: nil, log_only: false)
         command = Command.new cmd_name, addr: addr, data: data
         pi = PeripheralInterface.wrap command
-        logger.info "Sending command '#{command.name}' over UART"
+        logger.debug "Sending command '#{command.name}' over UART"
         # Flush serial's output and input before sending a new command
         serial_port.flush_output
         serial_port.flush_input

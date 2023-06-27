@@ -17,7 +17,9 @@ module Msp430Bsl
     end
 
     def data_lines_grouped_by_contiguous_addr
-      res = []
+      return @grouped_lines if @grouped_lines
+
+      @grouped_lines = []
       curr_group = nil
       curr_addr = nil
       prev_line = nil
@@ -33,7 +35,7 @@ module Msp430Bsl
           curr_group << line
           curr_addr = line.addr
         else
-          res << curr_group
+          @grouped_lines << curr_group
           curr_addr = nil
           redo
         end
@@ -41,9 +43,9 @@ module Msp430Bsl
         prev_line = line
       end
 
-      res << curr_group if curr_group.any?
+      @grouped_lines << curr_group if curr_group.any?
 
-      res
+      @grouped_lines
     end
   end
 end

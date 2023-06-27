@@ -13,9 +13,12 @@ Gem::Specification.new do |spec|
   spec.license       = 'MIT'
 
   spec.files         = Dir['README.md', 'MIT-LICENSE', 'lib/**/*.rb']
-  spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
+  spec.executables   = ['upload_hex']
   spec.require_paths = ['lib']
   spec.required_ruby_version = '>= 2.7.0'
 
-  spec.add_dependency 'http', '>= 4.4', '<= 5.1'
+  spec.add_dependency 'zeitwerk', '2.6.8'
+  spec.add_dependency 'serialport', '1.3.2'
+  spec.add_dependency 'slop', '4.10.1'
+  spec.add_dependency 'pry', '0.14.2'
 end

@@ -3,16 +3,7 @@
 require 'bundler/setup'
 Bundler.require
 require 'slop'
-
-loader = Zeitwerk::Loader.new
-loader.push_dir 'lib'
-core_ext = "#{__dir__}/lib/core_ext/"
-loader.ignore core_ext
-
-loader.setup
-
-# Require core_ext files
-Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
+require_relative '../lib/msp430_bsl'
 
 begin
   opts = Slop.parse help: true do |o|
@@ -43,10 +34,13 @@ logger = build_logger_from opts
 # Enter BSL
 @board.enter_bsl
 # Mass erase FLASH
+logger.info 'Mass erasing FLASH'
 @board.send_command :mass_erase
 # Unlock BSL protected commands
+logger.info "'Unlocking BSL's password protected commands'"
 @board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
 # Switch UART to max speed
+logger.info 'Changing UART BAUD to 115200'
 @board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[115200]
 @board.set_uart_speed 115200
 
@@ -54,6 +48,7 @@ logger = build_logger_from opts
 hexfile = Msp430Bsl::HexFile.new opts[:hexfile]
 
 # Group lines by contiguous memory addr
+logger.info 'Writing data into FLASH'
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
 # Try to optimize BSL writes
 # For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
@@ -85,4 +80,7 @@ line_groups.each do |group|
   end
 end
 
+# TODO: Verify CRC or read entire flash and compare to hex lines?
+
+logger.info 'Closing connection'
 @board.close_connection
