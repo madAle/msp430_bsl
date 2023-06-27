@@ -34,24 +34,24 @@ rescue Slop::UnknownOption => e
   exit
 end
 
-include Bsl::Utils
+include Msp430Bsl::Utils
 
 logger = build_logger_from opts
 
-@board = Bsl::Uart::Connection.new opts[:device], logger: logger
+@board = Msp430Bsl::Uart::Connection.new opts[:device], logger: logger
 
 # Enter BSL
 @board.enter_bsl
 # Mass erase FLASH
 @board.send_command :mass_erase
 # Unlock BSL protected commands
-@board.send_command :rx_password, data: Bsl::Configs::CMD_RX_PASSWORD
-# Switch UART to high speed
-@board.send_command :change_baud_rate, data: Bsl::Configs::BAUD_RATES[115200]
+@board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
+# Switch UART to max speed
+@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[115200]
 @board.set_uart_speed 115200
 
 # If everything has gone well so far...
-hexfile = Bsl::HexFile.new opts[:hexfile]
+hexfile = Msp430Bsl::HexFile.new opts[:hexfile]
 
 # Group lines by contiguous memory addr
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
@@ -66,7 +66,7 @@ line_groups.each do |group|
       # Use current line's addr as packet addr
       curr_data_packet << line
       curr_data_size += 2 + line.data_length  # 2 is the addr size (2 bytes)
-    elsif (curr_data_size + line.data_length) <= Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
+    elsif (curr_data_size + line.data_length) <= Msp430Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
       # If there's still room, append the line data
       curr_data_packet << line
       curr_data_size += line.data_length

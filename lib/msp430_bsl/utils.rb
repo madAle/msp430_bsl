@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 require 'logger'
 
-module Bsl
+module Msp430Bsl
   module Utils
     def crc16(data)
       raise ArgumentError, 'data must be an Array' unless data.is_a?(Array)

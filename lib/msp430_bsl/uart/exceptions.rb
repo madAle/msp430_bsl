@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Bsl
+module Msp430Bsl
   module Uart
     module Exceptions
       module Ack
@@ -22,7 +22,7 @@ module Bsl
       module PeripheralInterface
         class InterfaceWrapNotACommand < StandardError
           def initialize(arg)
-            message = "Given argument '#{arg}' must be a Bsl::Command"
+            message = "Given argument '#{arg}' must be a Msp430Bsl::Command"
             super(message)
           end
         end

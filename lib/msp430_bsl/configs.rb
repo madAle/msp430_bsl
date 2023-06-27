@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Bsl
+module Msp430Bsl
   module Configs
     CMD_KINDS = {
       data: { code: 0x3A, payload_min_size: 2 },

@@ -1,4 +1,4 @@
-module Bsl
+module Msp430Bsl
   class HexFile
 
     attr_reader :path, :raw_data

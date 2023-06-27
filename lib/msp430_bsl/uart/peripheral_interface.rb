@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Bsl
+module Msp430Bsl
   module Uart
     class PeripheralInterface
       include Utils

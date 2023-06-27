@@ -2,7 +2,7 @@
 require 'logger'
 require 'timeout'
 
-module Bsl
+module Msp430Bsl
   module Uart
     class Connection
 
@@ -40,7 +40,7 @@ module Bsl
       end
 
       def read_response_for(command)
-        raise ArgumentError, "an instance of Bsl::Command is expected as argument. Given: '#{command.class}'" unless command.is_a?(Command)
+        raise ArgumentError, "an instance of Msp430Bsl::Command is expected as argument. Given: '#{command.class}'" unless command.is_a?(Command)
 
         # Wait for first response byte - UART's ACK/NACK
         ack = nil
@@ -85,7 +85,7 @@ module Bsl
         logger.debug "IN  <- RES (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
         response = pi.to_response
         unless response.is_ok_given_command? command
-          raise Bsl::Exceptions::Response::NotValid, response.errors
+          raise Msp430Bsl::Exceptions::Response::NotValid, response.errors
         end
 
         response
