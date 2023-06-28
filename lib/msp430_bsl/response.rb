@@ -27,7 +27,7 @@ module Msp430Bsl
     end
 
     def is_data?
-      kind == Configs::CMD_KINDS[:data]
+      kind == Configs::CMD_KINDS[:data][:code]
     end
 
     def is_message?

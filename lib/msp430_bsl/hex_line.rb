@@ -4,7 +4,7 @@ module Msp430Bsl
   class HexLine
     include Utils
 
-    attr_reader :raw_data, :data_length, :addr, :type, :data, :crc, :number
+    attr_reader :raw_data, :data_length, :addr, :type, :data, :crc, :number, :end_addr
 
     RECORD_TYPES = {
       data: 0x00,
@@ -27,12 +27,13 @@ module Msp430Bsl
       @data = raw_data.slice 4, data_length
       @crc = raw_data[-1]
       @number = num
+      @end_addr = addr + data_length
     end
 
     # Checks if this line's address is contiguous with the one of the given line
     # Obviously this can be true only if the given line has an address that precedes this line's one
     def has_addr_contiguous_to?(another_line)
-      another_line.addr + another_line.data_length == addr
+      another_line.end_addr == addr
     end
 
     def crc_ok?
