@@ -20,19 +20,19 @@ Or install it yourself as:
     
 ## Compatibility
 
-Although it's not tested, this library should be compatibile with Ruby 2.7.0 or higher.
+This Gem has been developed with Ruby 3, but although it's not tested, it should work with Ruby down to (at least) 2.7.0
 
 ## Usage
 
 **Help is appreciated to write some good USAGE**
 
-In the `bin` folder there's the `upload_hex` executable. 
+In the `bin` folder there's the `upload_hex` executable. By installing the gem you'll have it available to use.
+Just run `upload_hex -h` to show available options.
 
-TL;DR: the script can upload a .hex file to the target through a normal UART connection (`rts` and `dtr` pins required). 
+TL;DR: the script can upload a `.hex` file to the target through a normal UART connection (`rts` and `dtr` pins required). 
 
-**The script has been tested only with CC430F5137**
+**The script has been tested only with CC430F5137 - contributions for other chips are welcome**
 
-Just run `bin/upload_hex -h` to show available options.
 
 ## TODO
 

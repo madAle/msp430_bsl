@@ -50,6 +50,10 @@ hexfile = Msp430Bsl::HexFile.new opts[:hexfile]
 # Group lines by contiguous memory addr
 logger.info 'Writing data into FLASH'
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
+
+p line_groups.map { |g| g.first.addr.to_hex_str }
+# exit
+
 # Try to optimize BSL writes
 # For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
 line_groups.each do |group|
@@ -76,6 +80,7 @@ line_groups.each do |group|
 
   # Send residual lines before handling next group
   if curr_data_packet.any?
+    p curr_data_packet.last.addr.to_hex_str
     @board.send_command :rx_data_block, addr: curr_data_packet.first.addr, data: curr_data_packet.map { |line| line.data }.reduce(:+)
   end
 end
