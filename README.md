@@ -20,7 +20,7 @@ Or install it yourself as:
     
 ## Compatibility
 
-This Gem has been developed with Ruby 3, but although it's not tested, it should work with Ruby down to (at least) 2.7.0
+This Gem has been developed with Ruby 3, but has been tested down to Ruby 2.5.0
 
 ## Usage
 

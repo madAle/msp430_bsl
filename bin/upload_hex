@@ -5,13 +5,20 @@ Bundler.require
 require 'slop'
 require_relative '../lib/msp430_bsl'
 
+include Msp430Bsl::Utils
+
+HIGH_SPEED_UART_BAUD = 115200.freeze
+MAX_WRITE_ATTEMPTS = 3
+
+@opts = {}
 begin
-  opts = Slop.parse help: true do |o|
+  @opts = Slop.parse help: true do |o|
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
     o.string '-g', '--logfile', 'Path to logfile'
     o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Defaults to 'debug'", default: :debug
-    o.bool '-c', '--check', 'Verify flash content after upload', default: true
+    o.bool '-e', '--erase_info', 'Erase info memory', default: false  # TODO: implement
+    o.bool '-c', '--check', 'Verify flash content after each data block write', default: true
     o.bool '-h', '--help', 'Print this help' do
       puts "#{o}\n"
       exit
@@ -25,11 +32,9 @@ rescue Slop::UnknownOption => e
   exit
 end
 
-include Msp430Bsl::Utils
+logger = build_logger_from @opts
 
-logger = build_logger_from opts
-
-@board = Msp430Bsl::Uart::Connection.new opts[:device], logger: logger
+@board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
 
 # Enter BSL
 @board.enter_bsl
@@ -37,22 +42,48 @@ logger = build_logger_from opts
 logger.info 'Mass erasing FLASH'
 @board.send_command :mass_erase
 # Unlock BSL protected commands
-logger.info "'Unlocking BSL's password protected commands'"
+logger.info "Unlocking BSL's password protected commands"
 @board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
 # Switch UART to max speed
 logger.info 'Changing UART BAUD to 115200'
-@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[115200]
-@board.set_uart_speed 115200
+@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[HIGH_SPEED_UART_BAUD]
+@board.set_uart_speed HIGH_SPEED_UART_BAUD
 
 # If everything has gone well so far...
-hexfile = Msp430Bsl::HexFile.new opts[:hexfile]
+hexfile = Msp430Bsl::HexFile.new @opts[:hexfile]
 
 # Group lines by contiguous memory addr
 logger.info 'Writing data into FLASH'
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
 
-p line_groups.map { |g| g.first.addr.to_hex_str }
-# exit
+def write_data_packet(lines_packet, check: true)
+  attempts = 0
+  loop do
+    # Write data to FLASH
+    resp = @board.send_command :rx_data_block, addr: lines_packet.first.addr, data: lines_packet.map { |line| line.data }.reduce(:+)
+
+    break resp unless check
+    # Check written data
+    data = lines_packet.map { |line| line.data }.flatten
+    start_addr = lines_packet.first.addr
+    data_len = data.size
+    our_crc = crc16(data)
+
+    resp = @board.send_command :crc_check, addr: start_addr, data: [data_len & 0xFF, (data_len >> 8) & 0xFF]
+    bsl_crc = resp.data[0] | resp.data[1] << 8
+
+    break resp if our_crc == bsl_crc
+
+    attempts += 1
+
+    logger.error "CRC mismatch at addr '0x#{start_addr.to_hex_str}' - Trying again"
+
+    if attempts >= MAX_WRITE_ATTEMPTS
+      logger.fatal "Tried #{attempts} times to write data at addr: 0x#{start_addr.to_hex_str}, but CRC keeps mismatching. Exiting"
+      exit
+    end
+  end
+end
 
 # Try to optimize BSL writes
 # For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
@@ -71,7 +102,7 @@ line_groups.each do |group|
       curr_data_size += line.data_length
     else
       # No room left, send packet
-      @board.send_command :rx_data_block, addr: curr_data_packet.first.addr, data: curr_data_packet.map { |line| line.data }.reduce(:+)
+      write_data_packet curr_data_packet, check: @opts[:check]
       curr_data_packet = []
       curr_data_size = 0
       redo  # Handle current line than would otherwise be skipped
@@ -80,8 +111,7 @@ line_groups.each do |group|
 
   # Send residual lines before handling next group
   if curr_data_packet.any?
-    p curr_data_packet.last.addr.to_hex_str
-    @board.send_command :rx_data_block, addr: curr_data_packet.first.addr, data: curr_data_packet.map { |line| line.data }.reduce(:+)
+    write_data_packet curr_data_packet, check: @opts[:check]
   end
 end
 

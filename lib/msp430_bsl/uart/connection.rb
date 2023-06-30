@@ -127,6 +127,7 @@ module Msp430Bsl
         test_pin_go :low
         sleep 5.millis
         reset_pin_go :high
+        sleep 5.millis
       end
 
       private
