@@ -5,6 +5,9 @@ Bundler.require
 require 'slop'
 require_relative '../lib/msp430_bsl'
 
+# Force sync on STDOUT write. This way the logger flushes its output after every write
+STDOUT.sync = true
+
 include Msp430Bsl::Utils
 
 HIGH_SPEED_UART_BAUD = 115200.freeze
