@@ -53,7 +53,7 @@ logger.info 'Changing UART BAUD to 115200'
 hexfile = Msp430Bsl::HexFile.new @opts[:hexfile]
 
 # Group lines by contiguous memory addr
-logger.info 'Writing data into FLASH'
+logger.info 'Writing data to FLASH'
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
 
 def write_data_packet(lines_packet, check: true)

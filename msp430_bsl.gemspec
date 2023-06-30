@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.files         = Dir['README.md', 'MIT-LICENSE', 'lib/**/*.rb']
   spec.executables   = ['upload_hex']
   spec.require_paths = ['lib']
-  spec.required_ruby_version = '>= 2.7.0'
+  spec.required_ruby_version = '>= 2.5.0'
 
   spec.add_dependency 'zeitwerk', '2.6.8'
   spec.add_dependency 'serialport', '1.3.2'
