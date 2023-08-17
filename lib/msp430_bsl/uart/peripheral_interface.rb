@@ -11,6 +11,7 @@ module Msp430Bsl
       HEADER_SIZE   = 1.freeze
       DATA_LEN_SIZE = 2.freeze
       CRC_SIZE      = 2.freeze
+      TOTAL_SIZE    = (HEADER_SIZE + DATA_LEN_SIZE + CRC_SIZE).freeze
 
       class << self
         include Utils
