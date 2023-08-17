@@ -98,7 +98,7 @@ line_groups.each do |group|
     if curr_data_packet.empty?
       # Use current line's addr as packet addr
       curr_data_packet << line
-      curr_data_size += 2 + line.data_length  # 2 is the addr size (2 bytes)
+      curr_data_size += line.data_length + Msp430Bsl::Uart::PeripheralInterface::TOTAL_SIZE
     elsif (curr_data_size + line.data_length) <= Msp430Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
       # If there's still room, append the line data
       curr_data_packet << line
