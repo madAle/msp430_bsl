@@ -8,12 +8,12 @@ module Msp430Bsl
 
       UART_CONFIGS = { data_bits: 8, stop_bits: 1, parity: SerialPort::EVEN }.transform_keys(&:to_s).freeze
 
-      WAIT_FOR_ACK_MAX      = 100.millis
-      WAIT_FOR_RESPONSE_MAX = 100.millis
+      WAIT_FOR_ACK_MAX      = 1000.millis
+      WAIT_FOR_RESPONSE_MAX = 1000.millis
 
       MEM_START_MAIN_FLASH      = 0x8000
 
-      CORE_COMMANDS_BUFFER_SIZE     = 260
+      CORE_COMMANDS_BUFFER_SIZE = 260
 
       attr_reader :serial_port, :device_path, :logger, :cmd_buff_size
 
@@ -23,6 +23,7 @@ module Msp430Bsl
         @cmd_buff_size = opts.fetch :cmd_buf_size, CORE_COMMANDS_BUFFER_SIZE
 
         @serial_port = SerialPort.new @device_path
+        @serial_port.flow_control = SerialPort::NONE
       end
 
       def close_connection
