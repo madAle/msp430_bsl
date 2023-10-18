@@ -13,7 +13,11 @@ module Msp430Bsl
         end
         class MessageNotSupported < StandardError
           def initialize(value)
-            message = "message with value 0x#{value.to_hex_str} not supported"
+            message = if value
+                        "message with value 0x#{value.to_hex_str} not supported"
+                      else
+                        "message without a value"
+                      end
             super(message)
           end
         end
