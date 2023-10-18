@@ -10,7 +10,6 @@ STDOUT.sync = true
 
 include Msp430Bsl::Utils
 
-HIGH_SPEED_UART_BAUD = 115200.freeze
 MAX_WRITE_ATTEMPTS = 3
 
 @opts = {}
@@ -19,9 +18,10 @@ begin
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
     o.string '-g', '--logfile', 'Path to logfile'
-    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Defaults to 'debug'", default: :debug
-    o.bool '-e', '--erase_info', 'Erase info memory', default: false  # TODO: implement
-    o.bool '-c', '--check', 'Verify flash content after each data block write', default: true
+    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
+    o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
+    o.bool '-e', '--erase_info', 'Erase info memory. Default: false', default: false  # TODO: implement
+    o.bool '-c', '--check', 'Verify flash content after each data block write. Default: true', default: true
     o.bool '-h', '--help', 'Print this help' do
       puts "#{o}\n"
       exit
@@ -37,6 +37,7 @@ end
 
 logger = build_logger_from @opts
 
+# Build UART Connection
 @board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
 
 # Enter BSL
@@ -48,9 +49,9 @@ logger.info 'Mass erasing FLASH'
 logger.info "Unlocking BSL's password protected commands"
 @board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
 # Switch UART to max speed
-logger.info 'Changing UART BAUD to 115200'
-@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[HIGH_SPEED_UART_BAUD]
-@board.set_uart_speed HIGH_SPEED_UART_BAUD
+logger.info "Changing UART BAUD to #{@opts[:baud]}"
+@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
+@board.set_uart_speed @opts[:baud]
 
 # If everything has gone well so far...
 hexfile = Msp430Bsl::HexFile.new @opts[:hexfile]
@@ -122,3 +123,4 @@ end
 
 logger.info 'Closing connection'
 @board.close_connection
+logger.info 'Upload done!'
