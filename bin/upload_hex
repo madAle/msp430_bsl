@@ -1,7 +1,5 @@
 #!/usr/bin/env ruby
 
-require 'bundler/setup'
-Bundler.require
 require 'slop'
 require_relative '../lib/msp430_bsl'
 
@@ -36,6 +34,11 @@ rescue Slop::UnknownOption => e
 end
 
 logger = build_logger_from @opts
+
+unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
+  logger.error "BAUD rate #{@opts[:baud]} not supported. Available BAUD rates: #{ Msp430Bsl::Configs::BAUD_RATES.join ', ' }"
+  exit
+end
 
 # Build UART Connection
 @board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
