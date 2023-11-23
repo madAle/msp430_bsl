@@ -1,19 +1,18 @@
 module Msp430Bsl
   class HexFile
 
-    attr_reader :path, :raw_data
+    attr_reader :path, :raw_data, :lines
 
-    def initialize(path)
-      @path = File.expand_path path
-      @raw_data = File.read path
+    def initialize(path = nil)
+      if path
+        @path = File.expand_path path
+        @raw_data = File.read path
+        load_lines
+      end
     end
 
-    def lines
-      return @lines if @lines
-
-      @lines = []
-      raw_data.each_line.with_index { |line, i| @lines << HexLine.new(line, num: i) }
-      @lines
+    def <<(line)
+      @lines << line
     end
 
     def data_lines_grouped_by_contiguous_addr
@@ -46,6 +45,13 @@ module Msp430Bsl
       @grouped_lines << curr_group if curr_group.any?
 
       @grouped_lines
+    end
+
+    private
+
+    def load_lines
+      @lines = []
+      raw_data.each_line.with_index { |line, i| @lines << HexLine.new(line, num: i) }
     end
   end
 end

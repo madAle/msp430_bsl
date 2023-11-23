@@ -44,5 +44,13 @@ module Msp430Bsl
       57600 => 0x05,
       115200 => 0x06
     }.freeze
+
+    CORE_COMMANDS_BUFFER_SIZE = 260
+    PURE_DATA_MAX_SIZE = 250
+
+    def self.reponse_reason_by_code(code)
+      message = RESPONSE_MESSAGES.find { |message, data| data[:code] == code }
+      message && message.last[:reason]
+    end
   end
 end

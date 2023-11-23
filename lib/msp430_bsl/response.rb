@@ -53,11 +53,15 @@ module Msp430Bsl
       if is_message?
         success_code = Configs::RESPONSE_MESSAGES[:success][:code]
         if data[0] != success_code  # First (and only) data byte is message code
-          @errors << [:message_code, "Message code NOK. Expected message code '#{success_code}', got '#{data[0]}'"]
+          @errors << [:message_code, "Message code NOK. Expected message code '#{success_code}', got '#{data[0]}' that should mean: '#{Configs.reponse_reason_by_code(data[0])}'"]
         end
       end
 
       @errors.empty?
+    end
+
+    def inspect
+      data.to_hex
     end
   end
 end

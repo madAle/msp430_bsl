@@ -18,6 +18,7 @@ begin
     o.string '-g', '--logfile', 'Path to logfile'
     o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
+    o.bool '-r', '--reset', 'Reset board after a successful upload', default: false
     o.bool '-e', '--erase_info', 'Erase info memory. Default: false', default: false  # TODO: implement
     o.bool '-c', '--check', 'Verify flash content after each data block write. Default: true', default: true
     o.bool '-h', '--help', 'Print this help' do
@@ -33,7 +34,9 @@ rescue Slop::UnknownOption => e
   exit
 end
 
-logger = build_logger_from @opts
+def logger
+  @logger ||= build_logger_from @opts
+end
 
 unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   logger.error "BAUD rate #{@opts[:baud]} not supported. Available BAUD rates: #{ Msp430Bsl::Configs::BAUD_RATES.join ', ' }"
@@ -92,26 +95,32 @@ def write_data_packet(lines_packet, check: true)
   end
 end
 
+def is_there_still_room_for?(next_line, into:)  # :into must be the curr_data_packet
+  pure_data_length = into.sum { |line| line.data_length } + next_line.data_length
+  return false if pure_data_length > Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
+
+  total_packet_length = pure_data_length + Msp430Bsl::Uart::PeripheralInterface::TOTAL_SIZE
+  return false if total_packet_length > Msp430Bsl::Configs::CORE_COMMANDS_BUFFER_SIZE
+
+  true
+end
+
 # Try to optimize BSL writes
 # For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
 line_groups.each do |group|
   curr_data_packet = []
-  curr_data_size = 0
   # Cycle lines in a group
   group.each do |line|
     if curr_data_packet.empty?
       # Use current line's addr as packet addr
       curr_data_packet << line
-      curr_data_size += line.data_length + Msp430Bsl::Uart::PeripheralInterface::TOTAL_SIZE
-    elsif (curr_data_size + line.data_length) <= Msp430Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
+    elsif is_there_still_room_for?(line, into: curr_data_packet)
       # If there's still room, append the line data
       curr_data_packet << line
-      curr_data_size += line.data_length
     else
       # No room left, send packet
       write_data_packet curr_data_packet, check: @opts[:check]
       curr_data_packet = []
-      curr_data_size = 0
       redo  # Handle current line than would otherwise be skipped
     end
   end
@@ -122,8 +131,11 @@ line_groups.each do |group|
   end
 end
 
-# TODO: Verify CRC or read entire flash and compare to hex lines?
-
+# Reset board if requested to
+if @opts[:reset]
+  logger.info "Resetting board"
+  @board.trigger_reset
+end
 logger.info 'Closing connection'
 @board.close_connection
 logger.info 'Upload done!'

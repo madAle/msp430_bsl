@@ -11,16 +11,12 @@ module Msp430Bsl
       WAIT_FOR_ACK_MAX      = 1000.millis
       WAIT_FOR_RESPONSE_MAX = 1000.millis
 
-      MEM_START_MAIN_FLASH      = 0x8000
-
-      CORE_COMMANDS_BUFFER_SIZE = 260
-
       attr_reader :serial_port, :device_path, :logger, :cmd_buff_size
 
       def initialize(device_path, opts = {})
         @device_path = device_path
         @logger = opts.fetch :logger, Logger.new(STDOUT)
-        @cmd_buff_size = opts.fetch :cmd_buf_size, CORE_COMMANDS_BUFFER_SIZE
+        @cmd_buff_size = opts.fetch :cmd_buf_size, Configs::CORE_COMMANDS_BUFFER_SIZE
 
         @serial_port = SerialPort.new @device_path
         @serial_port.flow_control = SerialPort::NONE
@@ -113,7 +109,7 @@ module Msp430Bsl
       end
 
       def set_uart_speed(baud)
-        raise StandardError, "BAUD not supported. Supported BAUD: #{Configs::BAUD_RATES.keys}" unless Configs::BAUD_RATES.keys.include?(baud)
+        raise StandardError, "BAUD not supported. Supported BAUDs: #{Configs::BAUD_RATES.keys}" unless Configs::BAUD_RATES.keys.include?(baud)
 
         logger.debug "Setting serial port BAUD to #{baud} bps"
 
@@ -123,7 +119,7 @@ module Msp430Bsl
       end
 
       def trigger_reset
-        # slau319 pag. 5 - Fig. 1-1
+        # slau319af.pdf - pag. 5 - Fig. 1-1
         reset_pin_go :low
         test_pin_go :low
         sleep 5.millis
