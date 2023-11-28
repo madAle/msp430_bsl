@@ -3,6 +3,7 @@
 module Msp430Bsl
   class HexLine
     include Utils
+    extend Utils
 
     attr_reader :raw_data, :data_length, :addr, :type, :data, :crc, :number, :end_addr
 
@@ -15,16 +16,33 @@ module Msp430Bsl
       start_lin_addr: 0x05
     }.freeze
 
+    class << self
+      def from(addr:, data:, type: :data)
+        data_str = "#{data.size.to_hex_str}#{addr.to_hex_str}#{RECORD_TYPES[type].to_hex_str}#{data.to_hex.join}"
+        data_str = ":#{data_str}#{crc8(data_str.to_hex_ary).to_hex_str}"
+        new data_str
+      end
+    end
+
     def initialize(data, num: nil)
       raise StandardError, 'raw_data must be a String' unless data.is_a?(String)
 
       # Strip String, remove first char i.e. ':' and convert char couples to its hex value.
-      @raw_data = data.strip[1..-1].to_hex_ary
+      if data[0] == ':'
+        @raw_data = data.strip[1..-1]
+      end
+      # Convert raw data to hex array
+      @raw_data = @raw_data.to_hex_ary
 
+      # Extract data length
       @data_length = raw_data[0]
+      # Extract addr
       @addr = (raw_data[1] << 8) | raw_data[2]
+      # Extract line type
       @type = raw_data[3]
+      # Extract data
       @data = raw_data.slice 4, data_length
+      # Extract CRC
       @crc = raw_data[-1]
       @number = num
       @end_addr = addr + data_length
@@ -43,6 +61,10 @@ module Msp430Bsl
     def is_of_type?(ty)
       ty = ty.to_sym
       type == RECORD_TYPES[ty]
+    end
+
+    def to_s
+      ":#{@data_length.to_hex_str}#{@addr.to_hex_str}#{@type.to_hex_str}#{data.to_hex.join}#{@crc.to_hex_str}"
     end
   end
 end

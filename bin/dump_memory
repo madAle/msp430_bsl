@@ -10,19 +10,22 @@ include Msp430Bsl::Utils
 
 MAX_WRITE_ATTEMPTS = 3
 SUPPORTED_OUTPUT_FORMATS = %w(hex)
+EXTRACT_PASS_FROM_FILE_REGEX = /^\:10FFE000(.{32})|^\:10FFF000(.{32})/.freeze
 
 @opts = {}
 begin
   @opts = Slop.parse help: true do |o|
-    o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
-    o.string '-o', '--outfile', 'Path to file where to save memory content. Default STDOUT', required: false
-    o.string '-g', '--logfile', 'Path to logfile'
-    o.integer '-s', '--startaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
+    o.string  '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
+    o.string  '-o', '--outfile', 'Path to file where to save memory content. Default STDOUT', required: false
+    o.string  '-g', '--logfile', 'Path to logfile'
+    o.array   '-p', '--password', '32 bytes password needed to unlock BSL. Defaults to an array containing 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD
+    o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
+    o.string  '-s', '--startaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
     o.integer '-e', '--endaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
-    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
-    o.string '-f', '--format', "Format of output. Supported formats: [hex]. Default 'hex' (Intel hex)", default: 'hex'
+    o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
+    o.string  '-f', '--out_format', "Format of output. Supported formats: [hex]. Default 'hex' (Intel hex)", default: 'hex'
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
-    o.bool '-h', '--help', 'Print this help' do
+    o.bool    '-h', '--help', 'Print this help' do
       puts "#{o}\n"
       exit
     end
@@ -47,8 +50,10 @@ def outfile
                end
 end
 
-unless SUPPORTED_OUTPUT_FORMATS.include? @opts[:format]
-  logger.error "File format '#{@opts[:format]} is not supported. Supported formats: #{SUPPORTED_OUTPUT_FORMATS.join ','}'"
+
+# Validations
+unless SUPPORTED_OUTPUT_FORMATS.include? @opts[:out_format]
+  logger.error "Output file format '#{@opts[:out_format]} is not supported. Supported formats: #{SUPPORTED_OUTPUT_FORMATS.join ','}'"
   exit 1
 end
 
@@ -57,20 +62,49 @@ unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   exit 2
 end
 
+# Conversions, normalizations, etc...
+@opts[:startaddr] = @opts[:startaddr].to_i(16) rescue @opts[:startaddr]
+@opts[:password] = @opts[:password].map { |el| el.to_i(16) rescue el }
+if @opts[:extract_pass_from]
+  logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
+  file_content = File.read @opts[:extract_pass_from]
+  lines = file_content.scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact
+  @opts[:password] = lines.map { |line| line.scan(/.{2}/).map { |el| el.to_i 16 }}.flatten
+  logger.info "BSL pass: #{@opts[:password].to_hex}"
+end
+
+
+### Core
+
 # Build UART Connection
 @board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
 
 # Enter BSL
 @board.enter_bsl
 logger.info "Unlocking BSL's password protected commands"
-@board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
+@board.send_command :rx_password, data: @opts[:password]
+@board.send_command :lock_unlock_info
 # Switch UART to max speed
 logger.info "Changing UART BAUD to #{@opts[:baud]}"
 @board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
 @board.set_uart_speed @opts[:baud]
 
+case @opts[:out_format]
+when 'hex', :hex
+  data_file = Msp430Bsl::HexFile.new
+end
 
-data = @board.send_command :tx_data_block, addr: @opts[:startaddr], data: [0x10, 0x00]
+current_addr = @opts[:startaddr]
+while current_addr < @opts[:endaddr]
+  resp = @board.send_command :tx_data_block, addr: current_addr, data: [0x10, 0x00]
+  data_file << Msp430Bsl::HexLine.from(addr: current_addr, data: resp.data)
+  
+end
+
+
+p resp.data.to_hex.join
+
+
 
 
 exit

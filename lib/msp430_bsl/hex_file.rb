@@ -4,6 +4,7 @@ module Msp430Bsl
     attr_reader :path, :raw_data, :lines
 
     def initialize(path = nil)
+      @lines = []
       if path
         @path = File.expand_path path
         @raw_data = File.read path
@@ -47,10 +48,13 @@ module Msp430Bsl
       @grouped_lines
     end
 
+    def to_s
+      @lines.map(&:to_s).join("\n")
+    end
+
     private
 
     def load_lines
-      @lines = []
       raw_data.each_line.with_index { |line, i| @lines << HexLine.new(line, num: i) }
     end
   end
