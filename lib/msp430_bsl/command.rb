@@ -33,14 +33,11 @@ module Msp430Bsl
       @packet = [code, splitted_addr, data].flatten.compact
     end
 
-    def length
-      code.to_bytes_ary.length
-    end
-
     # Split address to [low, middle, high] bytes
     def splitted_addr
       if addr
-        [ (addr & 0xFF), ((addr >> 8) & 0xFF), ((addr >> 16) & 0xFF) ]
+        # [ (addr & 0xFF), ((addr >> 8) & 0xFF), ((addr >> 16) & 0xFF) ]
+        addr.to_bytes_ary padding: 3
       end
     end
 

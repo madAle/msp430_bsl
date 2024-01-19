@@ -98,7 +98,7 @@ module Msp430Bsl
 
         unless pi.valid?
           logger.error "PeripheralInterface not valid. Errors: #{pi.errors}"
-          return nil
+          raise Exceptions::PeripheralInterface::NotValid, pi.errors
         end
 
         logger.debug "OUT -> (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"

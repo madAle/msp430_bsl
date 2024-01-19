@@ -20,5 +20,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'zeitwerk', '2.6.8'
   spec.add_dependency 'serialport', '1.3.2'
   spec.add_dependency 'slop', '4.10.1'
-  spec.add_dependency 'pry', '0.14.2'
+
+  spec.add_development_dependency 'pry', '0.14.2'
 end

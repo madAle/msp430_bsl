@@ -24,35 +24,41 @@ module Msp430Bsl
       end
 
       module PeripheralInterface
-        class InterfaceWrapNotACommand < StandardError
+        class NotValid < StandardError
+          def initialize(errors)
+            message = "PeripheralInterface not valid. Errors: '#{errors}'"
+            super(message)
+          end
+        end
+        class DoesNotWrapACommand < StandardError
           def initialize(arg)
             message = "Given argument '#{arg}' must be a Msp430Bsl::Command"
             super(message)
           end
         end
 
-        class InterfaceParseRawDataNotArray < StandardError
+        class ParsedRawDataAreNotAnArray < StandardError
           def initialize
             message = "PeripheralInterface#parse argument must be an Array"
             super(message)
           end
         end
 
-        class InterfaceDataNotArray < StandardError
+        class DataAreNotAnArray < StandardError
           def initialize
             message = "Peripheral Interface 'data' argument must be an Array"
             super(message)
           end
         end
 
-        class InterfaceSize < StandardError
+        class DataSizeError < StandardError
           def initialize(received_size)
             message = "Peripheral Interface size error. Required packet's min size is '#{PeripheralInterface::MIN_PACKET_SIZE}' bytes, given raw_data size is '#{received_size}' bytes"
             super(message)
           end
         end
 
-        class InterfaceHeaderNOK < StandardError
+        class HeaderNOK < StandardError
           def initialize(received_header)
             message = "Peripheral interface header NOK. Received '0x#{received_header.to_hex_str}' instead of 0x#{PeripheralInterface::OK_HEADER.to_hex_str}"
             super(message)
@@ -60,7 +66,7 @@ module Msp430Bsl
 
         end
 
-        class InterfaceCRCMismatch < StandardError
+        class CRCMismatch < StandardError
           def initialize
             message = 'Peripheral Interface CRC mismatch'
             super(message)

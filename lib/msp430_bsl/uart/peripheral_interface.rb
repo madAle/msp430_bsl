@@ -18,15 +18,15 @@ module Msp430Bsl
 
         def wrap(command)
           unless command.is_a?(Command)
-            raise Exceptions::PeripheralInterfaceWrapNotACommand, command
+            raise Exceptions::PeripheralInterface::DoesNotWrapACommand, command
           end
 
           new header: OK_HEADER, data_len: command.packet.size, data: command.packet
         end
 
         def parse(raw_data)
-          raise Exceptions::PeripheralInterfaceParseRawDataNotArray unless raw_data.is_a?(Array)
-          raise Exceptions::PeripheralInterfaceSize, raw_data.size unless raw_data.size >= MIN_PACKET_SIZE
+          raise Exceptions::PeripheralInterface::ParsedRawDataAreNotAnArray unless raw_data.is_a?(Array)
+          raise Exceptions::PeripheralInterface::DataSizeError, raw_data.size unless raw_data.size >= MIN_PACKET_SIZE
 
           header = raw_data[0]
           data_len = raw_data[2] << 8 | raw_data[1]
@@ -40,7 +40,7 @@ module Msp430Bsl
       attr_reader :header, :data_len, :data, :crc, :errors, :packet, :cmd_kind
 
       def initialize(header: nil, data_len: nil, data: nil, crc: nil)
-        raise Exceptions::PeripheralInterfaceDataNotArray if (data && !data.is_a?(Array))
+        raise Exceptions::PeripheralInterface::DataAreNotAnArray if (data && !data.is_a?(Array))
 
         @header = header
         @data_len = data_len

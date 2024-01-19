@@ -16,9 +16,9 @@ EXTRACT_PASS_FROM_FILE_REGEX = /^\:10FFE000(.{32})|^\:10FFF000(.{32})/.freeze
 begin
   @opts = Slop.parse help: true do |o|
     o.string  '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
-    o.string  '-o', '--outfile', 'Path to file where to save memory content. Default STDOUT', required: false
+    o.string  '-o', '--outfile', 'Path to file where to save flash content. Default STDOUT', required: false
     o.string  '-g', '--logfile', 'Path to logfile'
-    o.array   '-p', '--password', '32 bytes password needed to unlock BSL. Defaults to an array containing 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD
+    o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD.join
     o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
     o.string  '-s', '--startaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
     o.integer '-e', '--endaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
@@ -50,7 +50,6 @@ def outfile
                end
 end
 
-
 # Validations
 unless SUPPORTED_OUTPUT_FORMATS.include? @opts[:out_format]
   logger.error "Output file format '#{@opts[:out_format]} is not supported. Supported formats: #{SUPPORTED_OUTPUT_FORMATS.join ','}'"
@@ -64,13 +63,25 @@ end
 
 # Conversions, normalizations, etc...
 @opts[:startaddr] = @opts[:startaddr].to_i(16) rescue @opts[:startaddr]
-@opts[:password] = @opts[:password].map { |el| el.to_i(16) rescue el }
+@opts[:password] = @opts[:password].to_hex_ary
 if @opts[:extract_pass_from]
   logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
   file_content = File.read @opts[:extract_pass_from]
   lines = file_content.scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact
   @opts[:password] = lines.map { |line| line.scan(/.{2}/).map { |el| el.to_i 16 }}.flatten
   logger.info "BSL pass: #{@opts[:password].to_hex}"
+end
+
+# Handy methods
+
+def can_we_ask_another_line?(already_asked_count:, from_addr: , line_size:)
+  # We can't exceed Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
+  return false if (Msp430Bsl::Configs::PURE_DATA_MAX_SIZE - (already_asked_count * line_size)) < line_size
+
+  # We can't ask lines beyond endaddr memory address
+  return false if (from_addr + ((already_asked_count + 1) * line_size)) >= @opts[:endaddr]
+
+  true
 end
 
 
@@ -89,88 +100,29 @@ logger.info "Changing UART BAUD to #{@opts[:baud]}"
 @board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
 @board.set_uart_speed @opts[:baud]
 
-case @opts[:out_format]
-when 'hex', :hex
-  data_file = Msp430Bsl::HexFile.new
-end
+data_file = case @opts[:out_format]
+            when 'hex', :hex
+              Msp430Bsl::HexFile.new
+            else
+              Msp430Bsl::HexFile.new
+            end
 
+logger.info "Reading flash content..."
 current_addr = @opts[:startaddr]
+lines_to_ask = 1
 while current_addr < @opts[:endaddr]
-  resp = @board.send_command :tx_data_block, addr: current_addr, data: [0x10, 0x00]
-  data_file << Msp430Bsl::HexLine.from(addr: current_addr, data: resp.data)
-  
-end
-
-
-p resp.data.to_hex.join
-
-
-
-
-exit
-
-# Group lines by contiguous memory addr
-logger.info 'Writing data to FLASH'
-line_groups = hexfile.data_lines_grouped_by_contiguous_addr
-
-def write_data_packet(lines_packet, check: true)
-  attempts = 0
-  loop do
-    # Write data to FLASH
-    resp = @board.send_command :rx_data_block, addr: lines_packet.first.addr, data: lines_packet.map { |line| line.data }.reduce(:+)
-
-    break resp unless check
-    # Check written data
-    data = lines_packet.map { |line| line.data }.flatten
-    start_addr = lines_packet.first.addr
-    data_len = data.size
-    our_crc = crc16(data)
-
-    resp = @board.send_command :crc_check, addr: start_addr, data: [data_len & 0xFF, (data_len >> 8) & 0xFF]
-    bsl_crc = resp.data[0] | resp.data[1] << 8
-
-    break resp if our_crc == bsl_crc
-
-    attempts += 1
-
-    logger.error "CRC mismatch at addr '0x#{start_addr.to_hex_str}' - Trying again"
-
-    if attempts >= MAX_WRITE_ATTEMPTS
-      logger.fatal "Tried #{attempts} times to write data at addr: 0x#{start_addr.to_hex_str}, but CRC keeps mismatching. Exiting"
-      exit
-    end
-  end
-end
-
-# Try to optimize BSL writes
-# For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
-line_groups.each do |group|
-  curr_data_packet = []
-  curr_data_size = 0
-  # Cycle lines in a group
-  group.each do |line|
-    if curr_data_packet.empty?
-      # Use current line's addr as packet addr
-      curr_data_packet << line
-      curr_data_size += line.data_length + Msp430Bsl::Uart::PeripheralInterface::TOTAL_SIZE
-    elsif (curr_data_size + line.data_length) <= Msp430Bsl::Uart::Connection::CORE_COMMANDS_BUFFER_SIZE
-      # If there's still room, append the line data
-      curr_data_packet << line
-      curr_data_size += line.data_length
-    else
-      # No room left, send packet
-      write_data_packet curr_data_packet, check: @opts[:check]
-      curr_data_packet = []
-      curr_data_size = 0
-      redo  # Handle current line than would otherwise be skipped
-    end
+  # While there's still room for asking a line and we're inside our bounds (startaddr : endaddr)
+  while can_we_ask_another_line?(already_asked_count: lines_to_ask, from_addr: current_addr, line_size: data_file.line_data_size)
+    lines_to_ask += 1
   end
 
-  # Send residual lines before handling next group
-  if curr_data_packet.any?
-    write_data_packet curr_data_packet, check: @opts[:check]
-  end
+  resp = @board.send_command :tx_data_block, addr: current_addr, data: (lines_to_ask * data_file.line_data_size).to_bytes_ary
+  data_file.add_new_lines_from(resp.data, current_addr)
+  current_addr += (lines_to_ask * data_file.line_data_size)
+  lines_to_ask = 1
 end
+
+outfile.write data_file
 
 # Reset board if requested to
 if @opts[:reset]
@@ -179,4 +131,6 @@ if @opts[:reset]
 end
 logger.info 'Closing connection'
 @board.close_connection
-logger.info 'Upload done!'
+if outfile != STDOUT
+  logger.info "Flash content dumped to #{@opts[:outfile]}"
+end

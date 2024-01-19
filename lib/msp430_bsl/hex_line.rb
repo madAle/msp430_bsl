@@ -16,14 +16,6 @@ module Msp430Bsl
       start_lin_addr: 0x05
     }.freeze
 
-    class << self
-      def from(addr:, data:, type: :data)
-        data_str = "#{data.size.to_hex_str}#{addr.to_hex_str}#{RECORD_TYPES[type].to_hex_str}#{data.to_hex.join}"
-        data_str = ":#{data_str}#{crc8(data_str.to_hex_ary).to_hex_str}"
-        new data_str
-      end
-    end
-
     def initialize(data, num: nil)
       raise StandardError, 'raw_data must be a String' unless data.is_a?(String)
 
