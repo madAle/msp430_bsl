@@ -10,7 +10,7 @@ include Msp430Bsl::Utils
 
 MAX_WRITE_ATTEMPTS = 3
 SUPPORTED_OUTPUT_FORMATS = %w(hex)
-EXTRACT_PASS_FROM_FILE_REGEX = /^\:10FFE000(.{32})|^\:10FFF000(.{32})/.freeze
+EXTRACT_PASS_FROM_FILE_REGEX = /\:10FFE000(.{32})|\:10FFF000(.{32})/.freeze
 
 @opts = {}
 begin
@@ -44,7 +44,7 @@ end
 
 def outfile
   @outfile ||= if @opts[:outfile]
-                 File.open(@opts[:outfile], 'w')
+                 File.open(File.expand_path(@opts[:outfile]), 'w')
                else
                  STDOUT
                end
@@ -63,7 +63,15 @@ end
 
 # Conversions, normalizations, etc...
 @opts[:startaddr] = @opts[:startaddr].to_i(16) rescue @opts[:startaddr]
-@opts[:password] = @opts[:password].to_hex_ary
+if @opts[:password]
+  @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
+  puts "PASS: #{@opts[:password]}"
+  unless @opts[:password].any?
+    logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
+    exit
+  end
+end
+
 if @opts[:extract_pass_from]
   logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
   file_content = File.read @opts[:extract_pass_from]
@@ -132,5 +140,5 @@ end
 logger.info 'Closing connection'
 @board.close_connection
 if outfile != STDOUT
-  logger.info "Flash content dumped to #{@opts[:outfile]}"
+  logger.info "Flash content dumped to #{outfile.path}"
 end
