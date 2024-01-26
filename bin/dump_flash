@@ -9,7 +9,7 @@ STDOUT.sync = true
 include Msp430Bsl::Utils
 
 MAX_WRITE_ATTEMPTS = 3
-SUPPORTED_OUTPUT_FORMATS = %w(hex)
+SUPPORTED_OUTPUT_FORMATS = %w(hex raw_data)
 EXTRACT_PASS_FROM_FILE_REGEX = /\:10FFE000(.{32})|\:10FFF000(.{32})/.freeze
 
 @opts = {}
@@ -20,10 +20,11 @@ begin
     o.string  '-g', '--logfile', 'Path to logfile'
     o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD.join
     o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
-    o.string  '-s', '--startaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
-    o.integer '-e', '--endaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
+    o.array   '-r', '--memrange', 'Memory range to read'
+    o.string  '-s', '--memstartaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
+    o.string  '-e', '--memendaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
     o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
-    o.string  '-f', '--out_format', "Format of output. Supported formats: [hex]. Default 'hex' (Intel hex)", default: 'hex'
+    o.string  '-f', '--out_format', "Format of output. Supported formats: [hex, raw_data]. Default 'hex' (Intel hex)", default: 'hex'
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
     o.bool    '-h', '--help', 'Print this help' do
       puts "#{o}\n"
@@ -61,17 +62,34 @@ unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   exit 2
 end
 
+if @opts[:memrange].any? && @opts[:memrange].size.odd?
+  logger.error "Memory ranges must be provided in pairs. Provided 'memrange' argument with #{@opts[:memrange].size} values => #{@opts[:memrange]}"
+  exit 3
+end
+
+
 # Conversions, normalizations, etc...
-@opts[:startaddr] = @opts[:startaddr].to_i(16) rescue @opts[:startaddr]
+@opts[:memstartaddr] = @opts[:memstartaddr].to_i(16) rescue @opts[:memstartaddr]
+@opts[:memendaddr] = @opts[:memendaddr].to_i(16) rescue @opts[:memendaddr]
+
+# If memrange has been provided, convert values to integers parsing as hex
+# else set memrange as [memstartaddr, memendaddr]
+if @opts[:memrange].any?
+  @opts[:memrange].map! { |el| el.to_i(16) }
+else
+  @opts[:memrange] = [ @opts[:memstartaddr], @opts[:memendaddr] ]
+end
+
+# If password param has been provided, convert given string
 if @opts[:password]
   @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
-  puts "PASS: #{@opts[:password]}"
   unless @opts[:password].any?
     logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
     exit
   end
 end
 
+# If extract_pass_from param has been provided, extract BSL password from given file path
 if @opts[:extract_pass_from]
   logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
   file_content = File.read @opts[:extract_pass_from]
@@ -82,12 +100,12 @@ end
 
 # Handy methods
 
-def can_we_ask_another_line?(already_asked_count:, from_addr: , line_size:)
+def can_we_ask_another_line?(already_asked_count:, from_addr: , to_addr:,  line_size:)
   # We can't exceed Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
   return false if (Msp430Bsl::Configs::PURE_DATA_MAX_SIZE - (already_asked_count * line_size)) < line_size
 
-  # We can't ask lines beyond endaddr memory address
-  return false if (from_addr + ((already_asked_count + 1) * line_size)) >= @opts[:endaddr]
+  # We can't ask lines beyond memendaddr memory address
+  return false if (from_addr + ((already_asked_count + 1) * line_size)) >= to_addr
 
   true
 end
@@ -111,23 +129,30 @@ logger.info "Changing UART BAUD to #{@opts[:baud]}"
 data_file = case @opts[:out_format]
             when 'hex', :hex
               Msp430Bsl::HexFile.new
+            when 'raw_data', :raw_data
+              Msp430Bsl::RawDataFile.new
             else
               Msp430Bsl::HexFile.new
             end
 
 logger.info "Reading flash content..."
-current_addr = @opts[:startaddr]
-lines_to_ask = 1
-while current_addr < @opts[:endaddr]
-  # While there's still room for asking a line and we're inside our bounds (startaddr : endaddr)
-  while can_we_ask_another_line?(already_asked_count: lines_to_ask, from_addr: current_addr, line_size: data_file.line_data_size)
-    lines_to_ask += 1
-  end
 
-  resp = @board.send_command :tx_data_block, addr: current_addr, data: (lines_to_ask * data_file.line_data_size).to_bytes_ary
-  data_file.add_new_lines_from(resp.data, current_addr)
-  current_addr += (lines_to_ask * data_file.line_data_size)
+
+@opts[:memrange].each_slice(2) do |range|
+  current_addr = range[0]
+  endaddr = range[1]
   lines_to_ask = 1
+  while current_addr < endaddr
+    # While there's still room for asking a line and we're inside our bounds (current_addr : endaddr)
+    while can_we_ask_another_line?(already_asked_count: lines_to_ask, from_addr: current_addr, to_addr: endaddr, line_size: data_file.line_data_size)
+      lines_to_ask += 1
+    end
+
+    resp = @board.send_command :tx_data_block, addr: current_addr, data: (lines_to_ask * data_file.line_data_size).to_bytes_ary
+    data_file.add_new_lines_from(resp.data, current_addr)
+    current_addr += (lines_to_ask * data_file.line_data_size)
+    lines_to_ask = 1
+  end
 end
 
 outfile.write data_file

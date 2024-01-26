@@ -1,30 +1,7 @@
 module Msp430Bsl
-  class HexFile
+  class HexFile < DataFile
 
     LINE_DATA_SIZE = 0x10.freeze
-
-    attr_reader :path, :raw_data, :lines
-
-    def initialize(path = nil)
-      @lines = []
-      if path
-        @path = File.expand_path path
-        @raw_data = File.read path
-        load_lines
-      end
-    end
-
-    def add_new_lines_from(data, starting_addr)
-      curr_addr = starting_addr
-      data.each_slice(LINE_DATA_SIZE) do |slice|
-        @lines << new_line_from(slice, curr_addr)
-        curr_addr += LINE_DATA_SIZE
-      end
-    end
-
-    def <<(line)
-      @lines << line
-    end
 
     def data_lines_grouped_by_contiguous_addr
       return @grouped_lines if @grouped_lines
@@ -58,8 +35,8 @@ module Msp430Bsl
       @grouped_lines
     end
 
-    def line_data_size
-      LINE_DATA_SIZE
+    def raw_data
+      @lines.map { |l| l.data.to_hex }.join("\n")
     end
 
     def new_line_from(data, addr, type: :data)
@@ -70,12 +47,6 @@ module Msp430Bsl
 
     def to_s
       @lines.map(&:to_s).join("\n")
-    end
-
-    private
-
-    def load_lines
-      raw_data.each_line.with_index { |line, i| @lines << HexLine.new(line, num: i) }
     end
   end
 end
