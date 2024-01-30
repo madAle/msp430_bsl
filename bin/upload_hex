@@ -60,7 +60,7 @@ logger.info "Changing UART BAUD to #{@opts[:baud]}"
 @board.set_uart_speed @opts[:baud]
 
 # If everything has gone well so far...
-hexfile = Msp430Bsl::HexFile.new @opts[:hexfile]
+hexfile = Msp430Bsl::HexFile.load @opts[:hexfile]
 
 # Group lines by contiguous memory addr
 logger.info 'Writing data to FLASH'

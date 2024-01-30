@@ -3,6 +3,16 @@ module Msp430Bsl
 
     LINE_DATA_SIZE = 0x10.freeze
 
+    class << self
+      def load(path)
+        path = File.expand_path path
+        raw_data = File.read path
+        hexfile = new
+        hexfile.load_lines_from raw_data
+        hexfile
+      end
+    end
+
     def data_lines_grouped_by_contiguous_addr
       return @grouped_lines if @grouped_lines
 
@@ -33,6 +43,15 @@ module Msp430Bsl
       @grouped_lines << curr_group if curr_group.any?
 
       @grouped_lines
+    end
+
+    def load_lines_from(raw_data)
+      raw_data.each_line.with_index do |line, i|
+        line.strip!
+        next if line.empty?
+
+        @lines << HexLine.new(line, num: i)
+      end
     end
 
     def raw_data

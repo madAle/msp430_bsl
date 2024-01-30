@@ -100,14 +100,18 @@ end
 
 # Handy methods
 
-def can_we_ask_another_line?(already_asked_count:, from_addr: , to_addr:,  line_size:)
-  # We can't exceed Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
-  return false if (Msp430Bsl::Configs::PURE_DATA_MAX_SIZE - (already_asked_count * line_size)) < line_size
+# def can_we_ask_another_line?(already_asked_count:, from_addr: , to_addr:,  line_size:)
+#   # We can't exceed Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
+#   return false if (Msp430Bsl::Configs::PURE_DATA_MAX_SIZE - (already_asked_count * line_size)) < line_size
+#
+#   # We can't ask lines beyond memendaddr memory address
+#   return false if (from_addr + ((already_asked_count + 1) * line_size)) >= to_addr
+#
+#   true
+# end
 
-  # We can't ask lines beyond memendaddr memory address
-  return false if (from_addr + ((already_asked_count + 1) * line_size)) >= to_addr
-
-  true
+def num_of_bytes_to_fetch(from_addr, to_addr)
+  [Msp430Bsl::Configs::PURE_DATA_MAX_SIZE, (to_addr - from_addr)].min
 end
 
 
@@ -137,22 +141,20 @@ data_file = case @opts[:out_format]
 
 logger.info "Reading flash content..."
 
-
 @opts[:memrange].each_slice(2) do |range|
   current_addr = range[0]
   endaddr = range[1]
-  lines_to_ask = 1
+  fetched_data = []
   while current_addr < endaddr
-    # While there's still room for asking a line and we're inside our bounds (current_addr : endaddr)
-    while can_we_ask_another_line?(already_asked_count: lines_to_ask, from_addr: current_addr, to_addr: endaddr, line_size: data_file.line_data_size)
-      lines_to_ask += 1
-    end
+    num_bytes = num_of_bytes_to_fetch current_addr, endaddr
 
-    resp = @board.send_command :tx_data_block, addr: current_addr, data: (lines_to_ask * data_file.line_data_size).to_bytes_ary
-    data_file.add_new_lines_from(resp.data, current_addr)
-    current_addr += (lines_to_ask * data_file.line_data_size)
-    lines_to_ask = 1
+    logger.debug "fetching #{num_bytes} bytes from addr 0x#{current_addr.to_hex_str} to addr 0x#{(current_addr + num_bytes).to_hex_str}"
+    resp = @board.send_command :tx_data_block, addr: current_addr, data: num_bytes.to_bytes_ary
+    fetched_data << resp.data
+    current_addr += num_bytes
   end
+
+  data_file.add_new_lines_from(fetched_data.flatten, range[0])
 end
 
 outfile.write data_file

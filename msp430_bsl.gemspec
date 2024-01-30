@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.license       = 'MIT'
 
   spec.files         = Dir['README.md', 'MIT-LICENSE', 'lib/**/*.rb']
-  spec.executables   = ['upload_hex']
+  spec.executables   = ['upload_hex', 'dump_flash']
   spec.require_paths = ['lib']
   spec.required_ruby_version = '>= 2.5.0'
 

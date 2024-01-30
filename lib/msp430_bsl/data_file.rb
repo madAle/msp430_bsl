@@ -1,17 +1,12 @@
 module Msp430Bsl
   class DataFile
 
-    LINE_DATA_SIZE = 250.freeze
+    LINE_DATA_SIZE = Configs::PURE_DATA_MAX_SIZE
 
     attr_reader :path, :raw_data, :lines
 
-    def initialize(path = nil)
+    def initialize
       @lines = []
-      if path
-        @path = File.expand_path path
-        @raw_data = File.read path
-        load_lines
-      end
     end
 
     def add_new_lines_from(data, starting_addr)
@@ -32,17 +27,6 @@ module Msp430Bsl
 
     def new_line_from(data, addr, type: :data)
       raise NotImplementedError, 'You must implement this method in a subclass'
-    end
-
-    private
-
-    def load_lines
-      @raw_data.each_line.with_index do |line, i|
-        line.strip!
-        next if line.empty?
-
-        @lines << HexLine.new(line, num: i)
-      end
     end
   end
 end

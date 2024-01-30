@@ -88,7 +88,7 @@ module Msp430Bsl
         response
       end
 
-      def send_command(cmd_name, addr: nil, data: nil, log_only: false)
+      def send_command(cmd_name, addr: nil, data: nil)
         command = Command.new cmd_name, addr: addr, data: data
         pi = PeripheralInterface.wrap command
         logger.debug "Sending command '#{command.name}' over UART"
@@ -102,10 +102,9 @@ module Msp430Bsl
         end
 
         logger.debug "OUT -> (#{pi.packet.size} bytes) #{pi.to_hex_ary_str}"
-        unless log_only
-          serial_port.write pi.to_uart
-          read_response_for command
-        end
+
+        serial_port.write pi.to_uart
+        read_response_for command
       end
 
       def set_uart_speed(baud)
