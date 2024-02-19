@@ -1,0 +1,14 @@
+{
+  "name": "tool-upload_hex",
+  "version": "1.0,0",
+  "description": "Uploader",
+  "keywords": [
+    "tools",
+    "uploader"
+  ],
+  "homepage": "https://fancypixel.it",
+  "system": [
+    "darwin_x86_64",
+    "darwin_arm64"
+  ]
+}
