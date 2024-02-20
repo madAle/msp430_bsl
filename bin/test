@@ -16,15 +16,10 @@ EXTRACT_PASS_FROM_FILE_REGEX = /\:10FFE000(.{32})|\:10FFF000(.{32})/.freeze
 begin
   @opts = Slop.parse help: true do |o|
     o.string  '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
-    o.string  '-o', '--outfile', 'Path to file where to save flash content. Default STDOUT', required: false
     o.string  '-g', '--logfile', 'Path to logfile'
     o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD.join
     o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
-    o.array   '-r', '--memrange', 'Memory range to read'
-    o.string  '-s', '--memstartaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
-    o.string  '-e', '--memendaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
     o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
-    o.string  '-f', '--out_format', "Format of output. Supported formats: [hex, raw_data]. Default 'hex' (Intel hex)", default: 'hex'
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
     o.bool    '-h', '--help', 'Print this help' do
       puts "#{o}\n"
@@ -52,36 +47,15 @@ def outfile
 end
 
 # Validations
-unless SUPPORTED_OUTPUT_FORMATS.include? @opts[:out_format]
-  logger.error "Output file format '#{@opts[:out_format]} is not supported. Supported formats: #{SUPPORTED_OUTPUT_FORMATS.join ','}'"
-  exit 1
-end
-
 unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   logger.error "BAUD rate #{@opts[:baud]} not supported. Available BAUD rates: #{ Msp430Bsl::Configs::BAUD_RATES.join ', ' }"
   exit 2
 end
 
-if @opts[:memrange].any? && @opts[:memrange].size.odd?
-  logger.error "Memory ranges must be provided in pairs. Provided 'memrange' argument with #{@opts[:memrange].size} values => #{@opts[:memrange]}"
-  exit 3
-end
-
-
-# Conversions, normalizations, etc...
-@opts[:memstartaddr] = @opts[:memstartaddr].to_i(16) rescue @opts[:memstartaddr]
-@opts[:memendaddr] = @opts[:memendaddr].to_i(16) rescue @opts[:memendaddr]
-
-# If memrange has been provided, convert values to integers parsing as hex
-# else set memrange as [memstartaddr, memendaddr]
-if @opts[:memrange].any?
-  @opts[:memrange].map! { |el| el.to_i(16) }
-else
-  @opts[:memrange] = [ @opts[:memstartaddr], @opts[:memendaddr] ]
-end
+p @opts[:password]
 
 # If password param has been provided, convert given string
-if @opts[:password]
+if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD.join)
   @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
   unless @opts[:password].any?
     logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
@@ -98,23 +72,6 @@ if @opts[:extract_pass_from]
   logger.info "BSL pass: #{@opts[:password].to_hex}"
 end
 
-# Handy methods
-
-# def can_we_ask_another_line?(already_asked_count:, from_addr: , to_addr:,  line_size:)
-#   # We can't exceed Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
-#   return false if (Msp430Bsl::Configs::PURE_DATA_MAX_SIZE - (already_asked_count * line_size)) < line_size
-#
-#   # We can't ask lines beyond memendaddr memory address
-#   return false if (from_addr + ((already_asked_count + 1) * line_size)) >= to_addr
-#
-#   true
-# end
-
-def num_of_bytes_to_fetch(from_addr, to_addr)
-  [Msp430Bsl::Configs::PURE_DATA_MAX_SIZE, (to_addr - from_addr)].min
-end
-
-
 ### Core
 
 # Build UART Connection
@@ -124,51 +81,7 @@ end
 @board.enter_bsl
 logger.info "Unlocking BSL's password protected commands"
 @board.send_command :rx_password, data: @opts[:password]
-@board.send_command :lock_unlock_info
-# Erase INFO_A
 @board.send_command :erase_segment, addr: 0x1800
-
-@board.trigger_reset
-
-# Mass erase FLASH
-# logger.info 'Mass erasing FLASH'
-# @board.send_command :mass_erase
-
-exit
-
-# Switch UART to max speed
-logger.info "Changing UART BAUD to #{@opts[:baud]}"
-@board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
-@board.set_uart_speed @opts[:baud]
-
-data_file = case @opts[:out_format]
-            when 'hex', :hex
-              Msp430Bsl::HexFile.new
-            when 'raw_data', :raw_data
-              Msp430Bsl::RawDataFile.new
-            else
-              Msp430Bsl::HexFile.new
-            end
-
-logger.info "Reading flash content..."
-
-@opts[:memrange].each_slice(2) do |range|
-  current_addr = range[0]
-  endaddr = range[1]
-  fetched_data = []
-  while current_addr < endaddr
-    num_bytes = num_of_bytes_to_fetch current_addr, endaddr
-
-    logger.debug "fetching #{num_bytes} bytes from addr 0x#{current_addr.to_hex_str} to addr 0x#{(current_addr + num_bytes).to_hex_str}"
-    resp = @board.send_command :tx_data_block, addr: current_addr, data: num_bytes.to_bytes_ary
-    fetched_data << resp.data
-    current_addr += num_bytes
-  end
-
-  data_file.add_new_lines_from(fetched_data.flatten, range[0])
-end
-
-outfile.write data_file
 
 # Reset board if requested to
 if @opts[:reset]
@@ -177,6 +90,3 @@ if @opts[:reset]
 end
 logger.info 'Closing connection'
 @board.close_connection
-if outfile != STDOUT
-  logger.info "Flash content dumped to #{outfile.path}"
-end
