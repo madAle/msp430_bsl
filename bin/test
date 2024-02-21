@@ -52,8 +52,6 @@ unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   exit 2
 end
 
-p @opts[:password]
-
 # If password param has been provided, convert given string
 if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD.join)
   @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
