@@ -17,7 +17,7 @@ begin
   @opts = Slop.parse help: true do |o|
     o.string  '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string  '-g', '--logfile', 'Path to logfile'
-    o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD.join
+    o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD
     o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
     o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
@@ -53,7 +53,7 @@ unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
 end
 
 # If password param has been provided, convert given string
-if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD.join)
+if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD)
   @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
   unless @opts[:password].any?
     logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
@@ -67,7 +67,7 @@ if @opts[:extract_pass_from]
   file_content = File.read @opts[:extract_pass_from]
   lines = file_content.scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact
   @opts[:password] = lines.map { |line| line.scan(/.{2}/).map { |el| el.to_i 16 }}.flatten
-  logger.info "BSL pass: #{@opts[:password].to_hex}"
+  logger.debug "BSL pass: #{@opts[:password].to_hex.join}"
 end
 
 ### Core
