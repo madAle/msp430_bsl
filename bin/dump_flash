@@ -22,7 +22,7 @@ begin
     o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
     o.array   '-r', '--memrange', 'Memory range to read'
     o.string  '-s', '--memstartaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
-    o.string  '-e', '--memendaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0xFFFF
+    o.string  '-e', '--memendaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0x10000
     o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
     o.string  '-f', '--out_format', "Format of output. Supported formats: [hex, raw_data]. Default 'hex' (Intel hex)", default: 'hex'
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
@@ -158,13 +158,14 @@ logger.info "Reading flash content..."
 end
 
 outfile.write data_file
+outfile.write "\n\n"
 
 # Reset board if requested to
 if @opts[:reset]
   logger.info "Resetting board"
   @board.trigger_reset
 end
-logger.info 'Closing connection'
+logger.info "Closing connection"
 @board.close_connection
 if outfile != STDOUT
   logger.info "Flash content dumped to #{outfile.path}"
