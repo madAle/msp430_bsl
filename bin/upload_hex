@@ -9,6 +9,7 @@ STDOUT.sync = true
 include Msp430Bsl::Utils
 
 MAX_WRITE_ATTEMPTS = 3
+EXTRACT_PASS_FROM_FILE_REGEX = /\:10FFE000(.{32})|\:10FFF000(.{32})/.freeze
 
 @opts = {}
 begin
@@ -16,10 +17,13 @@ begin
     o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
     o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
     o.string '-g', '--logfile', 'Path to logfile'
-    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
+    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'info'", default: :info
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
+    o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD
+    o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
     o.bool '-r', '--reset', 'Reset board after a successful upload', default: false
     o.bool '-e', '--erase_info', 'Erase info memory. Default: false', default: false  # TODO: implement
+    o.bool '-n', '--no_mass_erase', 'Skip mass erase. Default: false (By default flash gets totally erased)', default: false 
     o.bool '-c', '--check', 'Verify flash content after each data block write. Default: true', default: true
     o.bool '-h', '--help', 'Print this help' do
       puts "#{o}\n"
@@ -43,17 +47,37 @@ unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
   exit
 end
 
+# If password param has been provided, convert given string
+if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD)
+  @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
+  unless @opts[:password].any?
+    logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
+    exit
+  end
+end
+
+# If extract_pass_from param has been provided, extract BSL password from given file path
+if @opts[:extract_pass_from]
+  logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
+  file_content = File.read @opts[:extract_pass_from]
+  lines = file_content.scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact
+  @opts[:password] = lines.map { |line| line.scan(/.{2}/).map { |el| el.to_i 16 }}.flatten
+  logger.debug "BSL pass: #{@opts[:password].to_hex.join}"
+end
+
 # Build UART Connection
 @board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
 
 # Enter BSL
 @board.enter_bsl
 # Mass erase FLASH
-logger.info 'Mass erasing FLASH'
-@board.send_command :mass_erase
-# Unlock BSL protected commands
+if !@opts[:no_mass_erase]
+  logger.info 'Mass erasing FLASH'
+  @board.send_command :mass_erase
+end
 logger.info "Unlocking BSL's password protected commands"
-@board.send_command :rx_password, data: Msp430Bsl::Configs::CMD_RX_PASSWORD
+@board.send_command :rx_password, data: @opts[:password]
+
 # Switch UART to max speed
 logger.info "Changing UART BAUD to #{@opts[:baud]}"
 @board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
@@ -66,11 +90,31 @@ hexfile = Msp430Bsl::HexFile.load @opts[:hexfile]
 logger.info 'Writing data to FLASH'
 line_groups = hexfile.data_lines_grouped_by_contiguous_addr
 
+@erased_segments = []
 def write_data_packet(lines_packet, check: true)
   attempts = 0
   loop do
-    # Write data to FLASH
-    resp = @board.send_command :rx_data_block, addr: lines_packet.first.addr, data: lines_packet.map { |line| line.data }.reduce(:+)
+    addr = lines_packet.first.addr
+    data = lines_packet.map { |line| line.data }.reduce(:+)
+    if @opts[:no_mass_erase]
+      starting_segment_addr = (addr / 0x200) * 0x200
+      ending_segment_addr = ((addr + data.size - 1) / 0x200) * 0x200
+      logger.debug "Starting segment addr: #{starting_segment_addr.to_hex_str} - Must erase: #{!@erased_segments.include? starting_segment_addr }"
+      logger.debug "Ending segment addr: #{ending_segment_addr.to_hex_str} - Must erase: #{!@erased_segments.include? ending_segment_addr}"
+      if !@erased_segments.include? starting_segment_addr
+        @board.send_command(:erase_segment, addr: starting_segment_addr)
+      end
+      if !@erased_segments.include? ending_segment_addr
+        @board.send_command(:erase_segment, addr: ending_segment_addr)
+      end
+
+      @erased_segments << starting_segment_addr
+      @erased_segments << ending_segment_addr
+      @erased_segments.uniq!
+    end
+    
+    # Write data to FLASH*
+    resp = @board.send_command :rx_data_block, addr: addr, data: data
 
     break resp unless check
     # Check written data

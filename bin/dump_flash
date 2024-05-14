@@ -23,7 +23,7 @@ begin
     o.array   '-r', '--memrange', 'Memory range to read'
     o.string  '-s', '--memstartaddr', "Memory's starting address to read from. Defaults to 0x8000", default: 0x8000
     o.string  '-e', '--memendaddr', "Memory's last address to read. Defaults to 0xFFFF", default: 0x10000
-    o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'debug'", default: :debug
+    o.string  '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'info'", default: :info
     o.string  '-f', '--out_format', "Format of output. Supported formats: [hex, raw_data]. Default 'hex' (Intel hex)", default: 'hex'
     o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
     o.bool    '-h', '--help', 'Print this help' do
@@ -88,7 +88,6 @@ if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWOR
     exit
   end
 end
-
 # If extract_pass_from param has been provided, extract BSL password from given file path
 if @opts[:extract_pass_from]
   logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"

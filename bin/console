@@ -15,7 +15,7 @@ core_ext_dir = File.expand_path '../lib/core_ext/', __dir__
 @loader.setup
 
 # Require core_ext files
-Dir['./lib/core_ext/**/*.rb'].each { |file| require file }
+Dir[File.join(core_ext_dir, "/**/*.rb")].each { |file| require file }
 
 def reload!
   @loader.reload
