@@ -19,7 +19,7 @@ module Msp430Bsl
         @cmd_buff_size = opts.fetch :cmd_buf_size, Configs::CORE_COMMANDS_BUFFER_SIZE
 
         @serial_port = SerialPort.new @device_path
-        @serial_port.flow_control = SerialPort::NONE
+        @serial_port.flow_control = SerialPort::SOFT
       end
 
       def close_connection
