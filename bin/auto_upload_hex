@@ -1,0 +1,363 @@
+#!/usr/bin/env ruby
+
+# Variant of 'upload_hex' meant to be left running on a programming jig:
+# it keeps probing the programmer and, as soon as a board is detected, it gets flashed.
+# Once a board has been flashed, its removal is awaited before arming again for the next one.
+
+require 'slop'
+require 'timeout'
+require_relative '../lib/msp430_bsl'
+
+# Force sync on STDOUT write. This way the logger flushes its output after every write
+STDOUT.sync = true
+
+include Msp430Bsl::Utils
+
+MAX_WRITE_ATTEMPTS = 3
+EXTRACT_PASS_FROM_FILE_REGEX = /\:10FFE000(.{32})|\:10FFF000(.{32})/.freeze
+PRESENCE_PINS = %w[cts dsr dcd ri].freeze
+
+# Raised when a board can't be flashed. It only aborts the current board, not the whole watcher
+class FlashError < StandardError; end
+
+@opts = {}
+begin
+  @opts = Slop.parse help: true do |o|
+    o.string '-d', '--device', 'Mandatory: Path to serial programmer device', required: true
+    o.string '-f', '--hexfile', 'Mandatory: Path to HEX file to load', required: true
+    o.string '-g', '--logfile', 'Path to logfile'
+    o.string '-l', '--loglevel', "Logger level. One of ['fatal', 'error', 'warn', 'info', 'debug']. Default: 'info'", default: :info
+    o.integer '-b', '--baud', 'BAUD rate with which communicate to BSL. Default: 115200', default: 115200
+    o.string  '-p', '--password', '32 bytes password string needed to unlock BSL. Defaults to 32 times 0xFF', default: Msp430Bsl::Configs::CMD_RX_PASSWORD
+    o.string  '-t', '--extract_pass_from', 'Hex file path from where to extract the BSL password. Looks for the 32 words from 0xFFE0 to 0xFFFF'
+    o.bool '-r', '--reset', 'Reset board after a successful upload', default: false
+    o.bool '-n', '--no_mass_erase', 'Skip mass erase. Default: false (By default flash gets totally erased)', default: false
+    o.bool '-c', '--check', 'Verify flash content after each data block write. Default: true', default: true
+    o.float '-w', '--poll_interval', 'Seconds between two board presence probes. Default: 1.0', default: 1.0
+    o.float '-s', '--settle', 'Seconds to wait after a board has been detected, before flashing it. Default: 0.3', default: 0.3
+    o.float '-k', '--cooldown', 'Seconds to wait after a board has been flashed, before probing again. Default: 2.0', default: 2.0
+    o.integer '-m', '--removal_checks', 'Consecutive failed probes needed to consider a flashed board removed. Default: 2', default: 2
+    o.string '-i', '--presence_pin', "Detect board presence through a serial input line instead of probing the BSL. One of #{PRESENCE_PINS.join ', '}, optionally prefixed by '!' to invert its logic (eg. '!cts')"
+    o.bool '-o', '--once', 'Flash the first detected board, then exit. Default: false', default: false
+    o.bool '-h', '--help', 'Print this help' do
+      puts "#{o}\n"
+      exit
+    end
+  end
+rescue Slop::MissingArgument => e
+  puts "Error: #{e}. Maybe you specified an empty argument?"
+  exit
+rescue Slop::UnknownOption => e
+  puts "Error: #{e}"
+  exit
+end
+
+def logger
+  @logger ||= build_logger_from @opts
+end
+
+unless Msp430Bsl::Configs::BAUD_RATES.include? @opts[:baud]
+  logger.error "BAUD rate #{@opts[:baud]} not supported. Available BAUD rates: #{ Msp430Bsl::Configs::BAUD_RATES.keys.join ', ' }"
+  exit
+end
+
+# If password param has been provided, convert given string
+if @opts[:password] && !@opts[:password].eql?(Msp430Bsl::Configs::CMD_RX_PASSWORD)
+  @opts[:password] = @opts[:password].scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact.join.to_hex_ary
+  unless @opts[:password].any?
+    logger.error "Wrong password provided. Please copy entirely hex file rows staring with :10FFE0 and :10FFF0"
+    exit
+  end
+end
+
+# If extract_pass_from param has been provided, extract BSL password from given file path
+if @opts[:extract_pass_from]
+  logger.info "Extracting BSL password from #{@opts[:extract_pass_from]}"
+  file_content = File.read @opts[:extract_pass_from]
+  lines = file_content.scan(EXTRACT_PASS_FROM_FILE_REGEX).flatten.compact
+  @opts[:password] = lines.map { |line| line.scan(/.{2}/).map { |el| el.to_i 16 }}.flatten
+  logger.debug "BSL pass: #{@opts[:password].to_hex.join}"
+end
+
+# If presence_pin param has been provided, validate it
+if @opts[:presence_pin]
+  @presence_pin_negated = @opts[:presence_pin].start_with? '!'
+  @presence_pin = @opts[:presence_pin].delete_prefix('!').downcase
+  unless PRESENCE_PINS.include? @presence_pin
+    logger.error "Presence pin '#{@presence_pin}' not supported. Available pins: #{PRESENCE_PINS.join ', '}"
+    exit
+  end
+end
+
+# Parse the HEX file once: the very same content gets written to every board
+hexfile = Msp430Bsl::HexFile.load @opts[:hexfile]
+# HexFile#data_lines_grouped_by_contiguous_addr blows up on a file without data lines,
+# so bail out before grouping instead of crashing the watcher at its very first cycle
+unless hexfile.lines.any? { |line| line.is_of_type? :data }
+  logger.error "No data lines found in #{@opts[:hexfile]}"
+  exit
+end
+line_groups = hexfile.data_lines_grouped_by_contiguous_addr
+
+# Silence the logger while probing, otherwise every single poll would pollute the log.
+# When running at debug level, the caller does want to see the probes
+def silently
+  prev_level = logger.level
+  logger.level = Logger::FATAL unless prev_level == Logger::DEBUG
+  yield
+ensure
+  logger.level = prev_level
+end
+
+def wait_for_device
+  return if File.exist? @opts[:device]
+
+  logger.warn "Waiting for programmer device #{@opts[:device]} to show up..."
+  sleep @opts[:poll_interval] until File.exist? @opts[:device]
+  logger.info "Programmer device #{@opts[:device]} is here"
+end
+
+def board
+  return @board if @board
+
+  wait_for_device
+  logger.info "Opening programmer on #{@opts[:device]}"
+  @board = Msp430Bsl::Uart::Connection.new @opts[:device], logger: logger
+rescue ArgumentError => e
+  # serialport raises ArgumentError when the given path is not a serial port at all:
+  # no point in keeping on retrying, the device param is simply wrong
+  logger.fatal "Can't use #{@opts[:device]} as a programmer: #{e.message}"
+  exit 1
+end
+
+def close_board
+  @board&.close_connection
+rescue StandardError => e
+  logger.debug "Error while closing serial port: #{e.message}"
+ensure
+  @board = nil
+end
+
+# Presence through a serial input line: meant for jigs having a microswitch (or any
+# other presence signal) wired to one of the programmer's input lines
+def presence_pin_high?
+  # Depending on the serialport version, line readers answer either 0/1 or false/true
+  value = board.serial_port.public_send @presence_pin
+  state = ![0, false, nil].include?(value)
+  @presence_pin_negated ? !state : state
+end
+
+# A board is considered present when it answers the BSL invocation sequence.
+# Any reply at all - even an unexpected one, like 'BSL locked' - means there's
+# something alive on the other side of the programmer
+def board_answers?
+  connection = board  # Opened outside the silenced block, so that its messages stay visible
+  silently do
+    connection.enter_bsl
+    connection.send_command :tx_bsl_version
+  end
+  true
+rescue Timeout::Error
+  false
+rescue Msp430Bsl::Uart::Exceptions::Ack::NOK, Msp430Bsl::Exceptions::Response::NotValid => e
+  logger.debug "Probe got an unexpected reply (#{e.class}): board considered present"
+  true
+rescue IOError, SystemCallError
+  raise  # Serial port trouble: let the main loop reopen it
+rescue StandardError => e
+  # Never let an unexpected probe error take the whole watcher down
+  logger.warn "Probe failed (#{e.class}: #{e.message}): board considered absent"
+  false
+end
+
+def board_present?
+  @opts[:presence_pin] ? presence_pin_high? : board_answers?
+end
+
+def write_data_packet(lines_packet, check: true)
+  attempts = 0
+  loop do
+    addr = lines_packet.first.addr
+    data = lines_packet.map { |line| line.data }.reduce(:+)
+    if @opts[:no_mass_erase]
+      starting_segment_addr = (addr / 0x200) * 0x200
+      ending_segment_addr = ((addr + data.size - 1) / 0x200) * 0x200
+      logger.debug "Starting segment addr: #{starting_segment_addr.to_hex_str} - Must erase: #{!@erased_segments.include? starting_segment_addr }"
+      logger.debug "Ending segment addr: #{ending_segment_addr.to_hex_str} - Must erase: #{!@erased_segments.include? ending_segment_addr}"
+      if !@erased_segments.include? starting_segment_addr
+        board.send_command(:erase_segment, addr: starting_segment_addr)
+      end
+      if !@erased_segments.include? ending_segment_addr
+        board.send_command(:erase_segment, addr: ending_segment_addr)
+      end
+
+      @erased_segments << starting_segment_addr
+      @erased_segments << ending_segment_addr
+      @erased_segments.uniq!
+    end
+
+    # Write data to FLASH
+    resp = board.send_command :rx_data_block, addr: addr, data: data
+
+    break resp unless check
+    # Check written data
+    data = lines_packet.map { |line| line.data }.flatten
+    start_addr = lines_packet.first.addr
+    data_len = data.size
+    our_crc = crc16(data)
+
+    resp = board.send_command :crc_check, addr: start_addr, data: [data_len & 0xFF, (data_len >> 8) & 0xFF]
+    bsl_crc = resp.data[0] | resp.data[1] << 8
+
+    break resp if our_crc == bsl_crc
+
+    attempts += 1
+
+    logger.error "CRC mismatch at addr '0x#{start_addr.to_hex_str}' - Trying again"
+
+    if attempts >= MAX_WRITE_ATTEMPTS
+      raise FlashError, "Tried #{attempts} times to write data at addr: 0x#{start_addr.to_hex_str}, but CRC keeps mismatching"
+    end
+  end
+end
+
+def is_there_still_room_for?(next_line, into:)  # :into must be the curr_data_packet
+  pure_data_length = into.sum { |line| line.data_length } + next_line.data_length
+  return false if pure_data_length > Msp430Bsl::Configs::PURE_DATA_MAX_SIZE
+
+  total_packet_length = pure_data_length + Msp430Bsl::Uart::PeripheralInterface::TOTAL_SIZE
+  return false if total_packet_length > Msp430Bsl::Configs::CORE_COMMANDS_BUFFER_SIZE
+
+  true
+end
+
+def flash_board(line_groups)
+  # Erased segments must be tracked per board: what has been erased on the previous
+  # board says nothing about the one currently sitting on the jig
+  @erased_segments = []
+
+  # Enter BSL
+  board.enter_bsl
+  # Mass erase FLASH
+  if !@opts[:no_mass_erase]
+    logger.info 'Mass erasing FLASH'
+    board.send_command :mass_erase
+  end
+  logger.info "Unlocking BSL's password protected commands"
+  board.send_command :rx_password, data: @opts[:password]
+
+  # Switch UART to max speed
+  logger.info "Changing UART BAUD to #{@opts[:baud]}"
+  board.send_command :change_baud_rate, data: Msp430Bsl::Configs::BAUD_RATES[@opts[:baud]]
+  board.set_uart_speed @opts[:baud]
+
+  # Try to optimize BSL writes
+  # For each lines group, append as many lines as possible, given the BSL Core Commands buffer size
+  logger.info 'Writing data to FLASH'
+  line_groups.each do |group|
+    curr_data_packet = []
+    # Cycle lines in a group
+    group.each do |line|
+      if curr_data_packet.empty?
+        # Use current line's addr as packet addr
+        curr_data_packet << line
+      elsif is_there_still_room_for?(line, into: curr_data_packet)
+        # If there's still room, append the line data
+        curr_data_packet << line
+      else
+        # No room left, send packet
+        write_data_packet curr_data_packet, check: @opts[:check]
+        curr_data_packet = []
+        redo  # Handle current line than would otherwise be skipped
+      end
+    end
+
+    # Send residual lines before handling next group
+    if curr_data_packet.any?
+      write_data_packet curr_data_packet, check: @opts[:check]
+    end
+  end
+
+  # Reset board if requested to
+  if @opts[:reset]
+    logger.info 'Resetting board'
+    board.trigger_reset
+  end
+end
+
+@flashed_ok = 0
+@flashed_ko = 0
+
+def stats
+  "OK: #{@flashed_ok} - FAILED: #{@flashed_ko}"
+end
+
+def board_failed(number, reason)
+  @flashed_ko += 1
+  logger.error "--- Board ##{number} FAILED (#{reason}) - #{stats} ---"
+end
+
+logger.info "Watching #{@opts[:device]} for boards to flash with #{@opts[:hexfile]}"
+logger.info "Presence detection: #{@opts[:presence_pin] ? "'#{@presence_pin}' line#{@presence_pin_negated ? ' (inverted)' : ''}" : 'BSL probe'} every #{@opts[:poll_interval]}s"
+logger.info 'Hit Ctrl-C to quit'
+
+armed = true       # No board has been flashed since the last removal
+absences = 0
+boards = 0
+
+begin
+  loop do
+    begin
+      board  # Make sure the programmer is open - waiting for it to show up, if needed
+
+      if board_present?
+        absences = 0
+
+        if armed
+          boards += 1
+          logger.info "--- Board ##{boards} detected ---"
+          sleep @opts[:settle]
+          started_at = Time.now
+
+          # Whatever goes wrong, it must only sink the board at hand, not the watcher
+          begin
+            flash_board line_groups
+            @flashed_ok += 1
+            logger.info "--- Board ##{boards} DONE in #{'%.1f' % (Time.now - started_at)}s - #{stats} ---"
+          rescue IOError, SystemCallError => e
+            # Serial port died mid-flash: it gets reopened at the next cycle
+            board_failed boards, "serial port error - #{e.class}: #{e.message}"
+            close_board
+          rescue StandardError => e
+            board_failed boards, "#{e.class}: #{e.message}"
+          end
+
+          armed = false
+          break if @opts[:once]
+
+          sleep @opts[:cooldown]
+          next
+        end
+      else
+        absences += 1
+
+        if !armed && absences >= @opts[:removal_checks]
+          logger.info "Board removed: waiting for the next one - #{stats}"
+          armed = true
+        end
+      end
+    rescue IOError, SystemCallError => e
+      # Programmer unplugged (or gone crazy): drop the port and open it again from scratch
+      logger.error "Serial port error (#{e.class}: #{e.message}) - Reopening #{@opts[:device]}"
+      close_board
+    end
+
+    sleep @opts[:poll_interval]
+  end
+rescue Interrupt
+  puts
+  logger.info 'Interrupted'
+end
+
+logger.info "Closing connection - #{stats}"
+close_board
